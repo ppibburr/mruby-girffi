@@ -1,14 +1,49 @@
 
-class Float
-  def ffi_ptr
-    CFunc::Double.new(CFunc::Float.new(self))
+module GirBind
+  class << self
+    alias :_define_module :define_module
+    def define_module where, name
+      _define_module where, name
+      return where.const_get(name)
+    end
+
+    alias :_define_class :define_class
+    def define_class where, name,sc = ::Object
+      _define_class where, name, sc
+      return where.const_get(name)
+    end
   end
 end
 
-class Integer
-  def ffi_ptr
-    CFunc::UInt32.new(self)
+def rnum2cnum n,type
+   #p type,:rnum
+   ot = FFI::Lib.find_type(type)
+  o=ot.new
+  o.value = n
+  o
+end
+
+C_NUMERICS = [CFunc::Int,
+              CFunc::SInt8,
+              CFunc::SInt16,
+              CFunc::SInt32,
+              CFunc::SInt64,
+              CFunc::UInt32,
+              CFunc::UInt8,
+              CFunc::UInt16,
+              CFunc::UInt32,
+              CFunc::UInt64,
+              CFunc::Float,
+              CFunc::Double]
+
+def cnum2rnum v,type
+  #p type
+  if C_NUMERICS.find do |q| v.is_a?(q) end
+    type = FFI::Lib.find_type(GirBind::Builder.find_type(type))
+    
+    return v = type.get(v.addr)
   end
+  return nil
 end
 
 
@@ -49,9 +84,13 @@ module FFI
     @@funcs
   end
   def call_func name,types,*o
+
 o.each_with_index do |q,i|
           if q.respond_to?(:ffi_ptr)
             o[i] = q.ffi_ptr
+          elsif q.is_a?(Numeric)
+   #        # p :rbum2cnum
+             o[i] = rnum2cnum(q,types[0][i])
           elsif o.is_a?(Proc)
             exit
           end
@@ -88,7 +127,11 @@ o.each_with_index do |q,i|
   end
   @@callbacks = {}
   def self.find_type t
-    @@types[t] || (@@callbacks[t] ? CFunc::Closure : CFunc::Pointer)
+   ## p t,:in_find
+    #p @@types
+    #p @@types[t]
+    #p t
+    @@types[t]  || (@@callbacks[t] ? CFunc::Closure : CFunc::Pointer)
   end
   
   def find_type t
@@ -114,7 +157,19 @@ o.each_with_index do |q,i|
     :pointer=>CFunc::Pointer,
     :void=>CFunc::Void,
     :double=>CFunc::Float,
-    :size_t=>CFunc::Int
+    :size_t=>CFunc::UInt32,
+    :ulong=>CFunc::UInt64,
+    :long=>CFunc::SInt64,
+    :uint64=>CFunc::UInt64,
+    :uint8=>CFunc::UInt8,
+    :uint16=>CFunc::UInt16,
+    :uint32=>CFunc::UInt32,
+    :int64=>CFunc::SInt64,
+    :int16=>CFunc::SInt16,
+    :int8=>CFunc::SInt8,
+    :int32=>CFunc::Int,
+    :short=>CFunc::SInt16,
+    :ushort=>CFunc::UInt16
   }
   @@cnt = 0
   $b = []
@@ -126,7 +181,7 @@ o.each_with_index do |q,i|
 
     @@cnt+=1
     $b << b=Proc.new do |*o|
-      #  p 90
+      # # p 90
 
         o.each_with_index do |q,i|
           if q.respond_to?(:ffi_ptr)
@@ -157,6 +212,8 @@ end
 
 class Symbol
   def enum?
+    #p self
+    #p FFI::Lib.enums
     FFI::Lib.enums[self]
   end
 end
@@ -207,7 +264,58 @@ def find_all_indices a,&b
   end
   o
 end
-
+GB_TYPES = {:string=>:string,
+      :int=>:int,
+      :int8=>:int8,
+      :int16=>:int16,
+      :int32=>:int32,
+      :int64=>:int64,
+      :double=>:double,
+      :long=>:long,
+      :char => :int8,
+      :uchar => :uint8,
+      :uint=>:uint,
+      :uint8=>:uint8,
+      :uint16=>:uint16,
+      :uint32=>:uint32,
+      :uint64=>:uint64,
+      :double=>:double,
+      :pointer=>:pointer,
+      :void=>:void,
+      :func=>:pointer,
+      :error=>:pointer,
+      :destroy=>:pointer,
+      :data=>:pointer,
+      :self=>:pointer,
+      :bool=>:bool,
+      :utf8=>:string,
+      :short=>:short,
+    :gboolean=>:bool,
+    :guint=>:uint,
+    :guint8=>:uint8,
+    :guint32=>:uint32,
+    :guint16=>:uint16,
+    :gint64=>:int64,
+    :glong=>:long,
+    :gulong=>:ulong,
+    :gshort=>:short,
+    :gushort=>:ushort,
+    :gchar=>:char,
+    :guchar=>:uchar,
+    :goffset=>:int64,
+    :gsize=>:ulong,
+    :utf8=>:string,
+    :interface=>:pointer,
+    :gint8=>:int8,
+    :gint16=>:int16,
+    :gint=>:int,
+    :gint32=>:int32,
+    :gdouble=>:double,
+    :gpointer=>:pointer,
+    :filename=>:string,
+    :gunichar=>:uint,
+    :object=>:pointer
+      }
 module GirBind
   module Builder
     def self.build_args a
@@ -243,17 +351,18 @@ module GirBind
           t = :pointer
         end
         if t.is_a?(Hash)
-      #  p 66
-      # p t
+      # # p 66
+      ## p t
           t=t[t.keys[0]]
           if t.is_a?(Array)
             t = :pointer
           end
-        #   p 44
+        #  # p 44
         end
-        if !(bt = GirBind::Builder.find_type(t))
+        if !(bt = GirBind::Builder.find_type(t) || (FFI::Lib.enums[t] ? :int : nil))
           FFI::Lib.callbacks[t] ? t : :pointer
         else
+          #p bt,:BT
           bt
         end
       end
@@ -334,7 +443,7 @@ module GirBind
               out_type = GirBind::Builder.alloc(FFI::Lib.find_type(GirBind::Builder.find_type(out_arg[:out]))) 
             end
             out_arg[:value] = out_type
-            oargs[oi] = out_arg[:value].addr
+            oargs[oi] = out_arg[:value]
           end
           
           # allow omissions of data, error, destroy
@@ -369,36 +478,9 @@ module GirBind
     end
     
     def self.find_type type
-      {:string=>:string,
-      :int=>:int,
-      :double=>:double,
-      :long=>:long,
-      :uint=>:uint,
-      :pointer=>:pointer,
-      :void=>:void,
-      :func=>:pointer,
-      :error=>:pointer,
-      :destroy=>:pointer,
-      :data=>:pointer,
-      :self=>:pointer,
-      :bool=>:bool,
-      :utf8=>:string,
-    :gboolean=>:bool,
-    :guint=>:uint,
-    :guint8=>:uint,
-    :guint32=>:uint,
-    :guint16=>:uint,
-    :gint64=>:int,
-    :utf8=>:string,
-    :interface=>:pointer,
-    :gint8=>:int,
-    :gint32=>:int,
-    :gdouble=>:double,
-    :gpointer=>:pointer,
-    :filename=>:string,
-    :gunichar=>:uint,
-    :object=>:pointer
-      }[type]    
+      resolved= nil
+      if !(resolved=GB_TYPES[type]) then "GB: type not found #{type} #{FFI::Lib.find_type(type)}" end
+      return resolved 
     end
     
     def self.make_pointer(rv)
@@ -420,14 +502,14 @@ module GirBind
     end
     
     def self.rary2cary ary,type
-     # p type
+     ## p type
       type = type == CFunc::Pointer ? type : find_type(type)
       raise TypeError.new("Cannot resolve type: #{type}") unless type
       
       out = (t=FFI::Lib.find_type(GirBind::Builder.find_type(type)))[ary.length]
       ary.each_with_index do |q,i|
         if [::String,Integer,Float,CFunc::Pointer].find do |c| q.is_a?(c) end
-          if [CFunc::Float,CFunc::Double,CFunc::Int,CFunc::UInt32].index(t)
+          if C_NUMERICS.index(t)
             if q.is_a?(Numeric) or q.is_a?(CFunc::Pointer)
               out[i].value = q
             else
@@ -448,22 +530,26 @@ module GirBind
       end
       return out
     rescue => e
-      p e
+     # p e
       raise e
     end 
     
     def self.alloc type
-      if [CFunc::Int,CFunc::UInt32,CFunc::Float,CFunc::Double].index(type)
+      #p type
+      if !C_NUMERICS.index(type)
+       ## p type
         return type.new
       elsif type == CFunc::Pointer
         return type.malloc(0)
       end
     end
+
     def instance_func sym,args,ret,result=nil,raise_on=nil,&pb
       s=sym.to_s.split(prefix+"_")
       s.shift
       s=s.join("#{prefix}_")
       data = self.instance_functions[s] = [sym,args,ret,result,raise_on,pb]
+data
     end
     
     def set_lib lib
@@ -473,15 +559,15 @@ module GirBind
     def get_lib
       @lib
     end
-    
+
     def self.result_to_ruby(gargs,result)
             v=gargs[result][:value]
             btype = gargs[result][:out]
+           # p btype,:fgh
             if btype == :string
               v=v.to_s
-            elsif [CFunc::Int,CFunc::UInt32,CFunc::Float,CFunc::Double].find do |q| v.is_a?(q) end
-              type = FFI::Lib.find_type(GirBind::Builder.find_type(btype))
-              v = type.get(v.addr)
+            elsif k=cnum2rnum(v,btype)
+              v=k
             end
             return v  
     end
@@ -517,125 +603,64 @@ module GirBind
               v = result_to_ruby(gargs,r)
               o << v
             end
+            gargs[r][:value].free
           end
         end
       r = o.empty? ? result_to_ruby([{:out=>ret,:value=>retv}],0) : (o.length == 1 ? o[0] : o)
       if b
         return b.call(r)
       end
-      return r               
+      return check_enum_return(ret,r)               
     end
     
     
     def do_class_func f,*o,&b
-      sym,args,ret,result,raise_on,pb = f
-      sym,ret,rargs,gargs,cargs,lib_args,rargsidx,nulls = GirBind::Builder.build_args([sym,args,ret])
-      z=lib_args.map do |a| ":#{a}" end.join(", ")
-      prefix = @prefix
-      #self::Lib.attach_function sym,lib_args,
-      rt=GirBind::Builder.find_type(ret)
-      #class << self;self;end.class_eval do
-      renums = find_all_indices rargs do |e|
-        e.is_a?(Symbol) and e.enum?
-      end
-      renums.each do |i|
-        ri = rargsidx.index(i)
-        e = rargs[i].enum?
-        #p e,:kkkkkkkkkkkkkkkkkkkkk
-        o[ri] = e.index(o[ri])
-      end
-      #p renums
-      #p FFI::Lib.enums
-      #p o,:ffffffffffffff,:Fffffffffffffffff
-      #  define_method sym.to_s.split(prefix+"_")[1] do |*o,&b|
-         # p :in_call
-          args = GirBind::Builder.compile_args(rargs,rargsidx,gargs,nulls,o,&b)  
-           retv = self.ns::Lib.call_func(sym,[lib_args,rt],*args)
-          r=GirBind::Builder.process_return(ret,retv,gargs,result,raise_on,&pb)
-          #p r,:ret
-          if e=ret.enum?
-            r = CFunc::Int.refer(r.addr).value
-            #p e
-            e[r]
-          else
-            r
-          end
-      
-      #end      
+          sym,lib_args,gargs,args,rt,ret,result,raise_on,pb = do_func_head f,*o,&b
+          retv = self.ns::Lib.call_func(sym,[lib_args,rt],*args)
+          GirBind::Builder.process_return(ret,retv,gargs,result,raise_on,&pb)
     end
     
-    def do_module_func f,*o,&b
-      sym,args,ret,result,raise_on,pb = f
-      sym,ret,rargs,gargs,cargs,lib_args,rargsidx,nulls = GirBind::Builder.build_args([sym,args,ret])
-      z=lib_args.map do |a| ":#{a}" end.join(", ")
-      prefix = @prefix
-      #self::Lib.attach_function sym,lib_args,
-      rt=GirBind::Builder.find_type(ret)
-      #class << self;self;end.class_eval do
-      renums = find_all_indices rargs do |e|
-        e.is_a?(Symbol) and e.enum?
-      end
-      renums.each do |i|
-        ri = rargsidx.index(i)
-        e = rargs[i].enum?
-        #p e,:kkkkkkkkkkkkkkkkkkkkk
-        o[ri] = e.index(o[ri])
-      end
-      #p renums
-      #p FFI::Lib.enums
-      #p o,:ffffffffffffff,:Fffffffffffffffff
-      #  define_method sym.to_s.split(prefix+"_")[1] do |*o,&b|
-         # p :in_call
-          args = GirBind::Builder.compile_args(rargs,rargsidx,gargs,nulls,o,&b)  
-           retv = self::Lib.call_func(sym,[lib_args,rt],*args)
-          r=GirBind::Builder.process_return(ret,retv,gargs,result,raise_on,&pb)
-          #p r,:ret
+    def self.check_enum_return ret,r
           if e=ret.enum?
             r = CFunc::Int.refer(r.addr).value
-            #p e
             e[r]
           else
             r
           end
+    end 
+
+    def do_func_head f,*o,&b
+      sym,args,ret,result,raise_on,pb = f
+      sym,ret,rargs,gargs,cargs,lib_args,rargsidx,nulls = GirBind::Builder.build_args([sym,args,ret])
+      z=lib_args.map do |a| ":#{a}" end.join(", ")
+      prefix = @prefix
+      rt=GirBind::Builder.find_type(ret)
       
-      #end  
+      renums = find_all_indices rargs do |e|
+        e.is_a?(Symbol) and e.enum?
+      end
+      
+      renums.each do |i|
+        ri = rargsidx.index(i)
+        e = rargs[i].enum?
+        o[ri] = e.index(o[ri]) unless o[ri].is_a? Numeric
+      end
+ 
+      args = GirBind::Builder.compile_args(rargs,rargsidx,gargs,nulls,o,&b)  
+
+      return sym,lib_args,gargs,args,rt,ret,result,raise_on,pb
+    end
+
+    def do_module_func f,*o,&b
+          sym,lib_args,gargs,args,rt,ret,result,raise_on,pb = do_func_head f,*o,&b
+          retv = self::Lib.call_func(sym,[lib_args,rt],*args)
+          GirBind::Builder.process_return(ret,retv,gargs,result,raise_on,&pb)
     end
     
     def do_instance_func f,*o,&b
-      sym,args,ret,result,raise_on,pb = f
-      sym,ret,rargs,gargs,cargs,lib_args,rargsidx,nulls = GirBind::Builder.build_args([sym,args,ret])
-      z=lib_args.map do |a| ":#{a}" end.join(", ")
-      prefix = @prefix
-      #self::Lib.attach_function sym,lib_args,
-      rt=GirBind::Builder.find_type(ret)
-      #class << self;self;end.class_eval do
-      renums = find_all_indices rargs do |e|
-        e.is_a?(Symbol) and e.enum?
-      end
-      renums.each do |i|
-        ri = rargsidx.index(i)
-        e = rargs[i].enum?
-        #p e,:kkkkkkkkkkkkkkkkkkkkk
-        o[ri] = e.index(o[ri])
-      end
-      #p renums
-      #p FFI::Lib.enums
-      #p o,:ffffffffffffff,:Fffffffffffffffff
-      #  define_method sym.to_s.split(prefix+"_")[1] do |*o,&b|
-         # p :in_call
-          args = GirBind::Builder.compile_args(rargs,rargsidx,gargs,nulls,o,&b)  
-           retv = self.ns::Lib.call_func(sym,[lib_args,rt],*args)
-          r=GirBind::Builder.process_return(ret,retv,gargs,result,raise_on,&pb)
-          #p r,:ret
-          if e=ret.enum?
-            r = CFunc::Int.refer(r.addr).value
-            #p e
-            e[r]
-          else
-            r
-          end
-      
-      #end      
+          sym,lib_args,gargs,args,rt,ret,result,raise_on,pb = do_func_head f,*o,&b
+          retv = self.ns::Lib.call_func(sym,[lib_args,rt],*args)
+          GirBind::Builder.process_return(ret,retv,gargs,result,raise_on,&pb)
     end
     
     def find_module_function m
@@ -679,7 +704,9 @@ module GirBind
     end  
 
     def method_missing m,*o,&b
+      #p m
       if f=find_module_function(m.to_s)
+       ## p f,*o
         do_module_func(f,*o,&b)
       elsif f=find_class_function(m.to_s)
         do_class_func(f)
@@ -717,12 +744,16 @@ module GirBind
       end
     end
   
+
     def initialize *o
+#p :ei
       obj = get_constructor.call *o
       super(obj)
     end
-  
+ # $bb = []
     def set_constructor(*data, &b)
+   #  # p :qq
+  #    $BB << b
       @constructor = GirBind::Base::Construct.new(*data,&b)
     end
       
@@ -776,7 +807,7 @@ end
 module GObject
   module Lib
     extend FFI::Lib
-    ffi_lib "/usr/lib/i386-linux-gnu/libgobject-2.0.so.0"
+    ffi_lib "libgobject-2.0.so.0"
     attach_function :g_type_init,[],:void
   end
 end
@@ -795,14 +826,15 @@ module FFI
           b[idx] = val
         end
         a=b
-       # p a
+       ## p a
       end
       @@enums[t] = a
-      typedef t,:int
+      typedef :int,t
     end
 
     def self.enums
-      @@enums
+      r=@@enums
+      r
     end
   end
 
@@ -820,6 +852,7 @@ module GLib
   class Strv
 
     def initialize ptr
+     # p ptr
       @ptr = ptr
     end
 
@@ -830,6 +863,7 @@ module GLib
     def to_a
       a = []
       c = 0
+     # p @ptr
       ca=CFunc::CArray(CFunc::Pointer).refer(@ptr.addr)
       while !ca[c].is_null?
         a << ca[c].to_s
@@ -950,15 +984,17 @@ module GObjectIntrospection
 
     module_func :g_type_tag_to_string, [:int], :string
     #p module_functions
+   #:pre
     type_tag_map = (0..31).map { |id|
+    #  # p id
       [type_tag_to_string(id).to_s.to_sym, id]
     }.flatten
     self::Lib.enum :ITypeTag, type_tag_map
-
+   ## p :mid
     # Now, attach g_type_tag_to_string again under its own name with an
     # improved signature.
     data = module_func :g_type_tag_to_string, [:ITypeTag], :string
-    
+    #p :post
     #define G_TYPE_TAG_IS_BASIC(tag) (tag < GI_TYPE_TAG_ARRAY)
 
     self::Lib.enum :IArrayType, [
@@ -1140,9 +1176,9 @@ module GObjectIntrospection
     end
 
     def get_methods
-    # p 77;p get_n_methods
+    ## p 77;p get_n_methods
       a=[]
-      for i in 0..CFunc::Int.refer(get_n_methods.addr).value-1
+      for i in 0..CFunc::Int.refer(get_n_methods).value-1
         a << get_method(i)
       end
       a
@@ -1443,7 +1479,7 @@ module GObjectIntrospection
     end
 
     def n_args
-      CFunc::Int.refer(GObjectIntrospection.callable_info_get_n_args(@gobj).addr).value
+      GObjectIntrospection.callable_info_get_n_args(@gobj)
     end
 
     def arg(index)
@@ -1475,7 +1511,7 @@ module GObjectIntrospection
       GObjectIntrospection.function_info_get_symbol @gobj
     end
     def flags
-      CFunc::Int.refer(GObjectIntrospection.function_info_get_flags(@gobj).addr).value
+      GObjectIntrospection.function_info_get_flags(@gobj)
     end
 
     #TODO: Use some sort of bitfield
@@ -1983,6 +2019,7 @@ module GObjectIntrospection
 
     def initialize
       @gobj = GObjectIntrospection.irepository_get_default
+     # p :IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR
     end
 
    # include Singleton
@@ -2002,13 +2039,13 @@ module GObjectIntrospection
     def require namespace, version=nil, flags=0
       errpp = CFunc::Pointer.new
       GObjectIntrospection.irepository_require @gobj, namespace, version, flags, errpp.addr
-
+     # p :RRRRRRRRRRRRRRRRRRREQQQQQQQQQQQQQQQQQQQQQRRRRRRRRRRRREEEEEEEEEEEEE
       #errp = errpp.to_s
       raise GError.new(errpp.to_s).message unless errpp.is_null?
     end
 
     def n_infos namespace
-      CFunc::Int.refer(GObjectIntrospection.irepository_get_n_infos(@gobj, namespace).addr).value
+      GObjectIntrospection.irepository_get_n_infos(@gobj, namespace)
     end
 
     def info namespace, index
@@ -2021,11 +2058,11 @@ module GObjectIntrospection
       a=[]
       (n=n_infos(namespace)-1)#,:n_info
       for idx in (0..(n))
-       # p 55
-       # p idx
+       ## p 55
+       ## p idx
         
 	a << info(namespace, idx)
-       # p 66
+       ## p 66
       end
       #p n
       a
@@ -2043,8 +2080,15 @@ module GObjectIntrospection
 
     def dependencies namespace
       strv_p = GObjectIntrospection.irepository_get_dependencies(@gobj, namespace)
+     # p namespace
+     # p @gobj
+     # p strv_p
+     # p :in_deps
       strv = GLib::Strv.new strv_p
-      strv.to_a
+     # p :strv
+      a=strv.to_a
+     # p a
+      a
     end
 
     def get_c_prefix(ns)
@@ -2079,13 +2123,14 @@ def check_enum type
   #p type.interface,:type_interface
   if (enum=type.interface).is_a?(GObjectIntrospection::IEnumInfo)
     if !(e=FFI::Lib.enums[:"Gtk#{enum.name}"])
-      q = CFunc::Int.refer(enum.n_values.addr).value-1
+      #p enum.n_values;exit
+      q = enum.n_values-1
       e = []
       for i in 0..q
-        e[CFunc::Int.refer(enum.value(i).value.addr).value] = enum.value(i).name.to_sym
+        e[enum.value(i).value] = enum.value(i).name.to_sym
       end
       Gtk::Lib.enum((en=:"Gtk#{enum.name}"),e)
-     # p en;
+     ## p en;
       en
     end
   end
@@ -2099,13 +2144,13 @@ def get_args m,allow_cb=true
   data = nil
   destroy = nil
   cb = nil
-  #p 567
+ # p 567
   m.args.each_with_index do |a,i|
-   # p a.argument_type.tag
+   ## p a.argument_type.tag
     #p :hhh
     out = a.direction == :out
-    cb = CFunc::Int.refer(a.closure.addr).value
-    ds = CFunc::Int.refer(a.destroy.addr).value
+    cb = a.closure
+    ds = a.destroy
     be_null = a.may_be_null?
 
     if (ts=a.argument_type.type_specification).is_a?(Array)
@@ -2123,14 +2168,14 @@ def get_args m,allow_cb=true
     else
       #p :nts
       ts = :pointer if ts == :interface
-     # p ts
+     ## p ts
       if ts == :void
         ts = :pointer
       end
       if en=check_enum(a.argument_type)
         ts = en
       else
-       # p ts
+       ## p ts
         ts = GirBind::Builder.find_type(ts)
       end
       outs << i if out
@@ -2197,7 +2242,7 @@ def get_function m,func_where = "class_func"
       alist << ":error"
     end
   rescue => e
-    p e
+   # p e
     return
   end
   outs.find_all do |o|
@@ -2244,35 +2289,166 @@ module GLib
 end
 
 module GirBind
-  @gir = GObjectIntrospection::IRepository.new
+  #@gir = GObjectIntrospection::IRepository.new
   def self.gir
-    @gir
+    @gir = GObjectIntrospection::IRepository.new
   end
   def self.setup(ns)
-    @gir.require(ns)
+    gir.require(ns)
     begin
       kls=::Object.const_get(ns.to_sym)
     rescue
-    ::Object.const_set(ns.to_sym,kls=Class.new)
+      kls=GirBind.define_class(::Object,ns.to_sym)
     end
-    kls.extend GirBind::Dispatch
-    kls.set_lib_name(ns)
     
+    if !kls.is_a?(GirBind::Dispatch)
+      kls.extend GirBind::Dispatch
+      kls.set_lib_name(ns)
+    end
+   # p :deps
     @gir.dependencies(ns).each do |q|
-       next if q == "xlib-2.0"
+      # p q
+       next if q == "xlib-2.0" or q == "JSCore-3.0"
+      #puts "dependency #{q}"
        nsq = q.split("-")[0]
        nsq[0] = nsq[0].upcase
        begin
          kls=::Object.const_get(nsq.to_sym)
+         #p :already_had,nsq
        rescue
-         ::Object.const_set(nsq.to_sym,kls=Class.new)
+        # p nsq,:setting
+         kls=GirBind.define_class(::Object,nsq.to_sym)
+        # p kls
        end
-       kls.extend GirBind::Dispatch
-       kls.set_lib_name(nsq)
+       if !kls.is_a?(GirBind::Dispatch)
+         kls.extend GirBind::Dispatch
+        # p :ext
+         kls.set_lib_name(nsq)
+        # p :libn
+       else
+         #puts "#{nsq} is Dispatch"
+       end
+       
     end
-    GObject.setup_class(:Object)
+    GObject.setup_class :Object
   end
 end
+
+module GirBind
+  module ObjectBase
+    def method_missing m,*o,&b
+        #p [:instance,m]
+        fun = nil
+        sc = self.class
+        qc = nil
+        ## p fun,:fun,m
+        #p sc._gir_info.find_method("m")
+        until fun or sc == GirBind::Base
+          ## p sc.ns.name if sc != GirBind::Base
+          fun=sc.find_instance_function(m.to_s) 
+          sc=sc.superclass unless fun
+        end
+       
+        if !fun
+          k = "#{m}"
+          sc = self.class
+         # p :no_fun
+          until fun or sc == GirBind::Base
+          #   p 3,sc
+            (fun = (qc=sc._gir_info).find_method(k))
+           #  p 1
+            #p 2 if fun
+            #GObjectIntrospection.base_info_unref(qc.to_ptr)
+            GObjectIntrospection.base_info_unref(qc.to_ptr) if !fun
+            sc=sc.superclass unless fun
+          end
+        end
+        ns=sc
+        fun
+             #   p 2 if fun
+
+      if fun and !fun.is_a?(Array)
+        a =[self]
+        a.push *o
+        builder,alist,rt,oa = get_function(fun,"class_func")
+        GObjectIntrospection.base_info_unref(qc.to_ptr)
+        list = [:pointer]
+        list.push *alist;
+        data = sc.instance_func ("#{sc.ns.prefix}_#{sc.name}_#{m}".downcase).to_sym,list,rt,oa
+       # p data,a
+        r=ns.send :"do_instance_func", data,*a,&b
+      elsif fun.is_a?(Array)
+        a =[self]
+        a.push *o
+        sc.do_instance_func(fun,*a,&b)
+      else
+        super
+      end
+    end
+  end
+
+  module ClassBase
+    include GirBind::Built
+
+    def _gir_info
+      @gi = ::GirBind.gir.find_by_name(ns.get_lib_name,s="#{name}")
+    end
+    
+
+   def self.extended q
+     #super   
+     class << q
+       attr_reader :ns,:name
+       attr_reader :get_gtype_name
+       def get_gtype
+         GObject.type_from_name get_gtype_name
+       end
+     end
+   end
+
+   def init_binding klass,ns
+     @ns = ns
+#     # p ns
+     @name = klass.name
+     prefix "#{@ns.prefix}_#{name}".downcase
+     @get_gtype_name = ns.get_lib_name+(@name)
+   end
+
+    def new *o,&b
+      method_missing :new,*o,&b
+    end
+
+    def method_missing m,*o,&b
+#     # p m
+      if !(fun=find_class_function("#{m}"))
+      fun = (qc=_gir_info).find_method("#{m}")
+
+      if fun
+        builder,alist,rt,oa = get_function(fun,"class_func")
+        data = send "class_func", :"#{ns.prefix.downcase}_#{@name.downcase}_#{m}",alist,rt,oa
+
+        if fun.constructor?
+#          # p :tree
+          ins = allocate
+
+          qq=ns
+          ins.set_constructor() do |*a,&qb|
+            send :"do_class_func", data,*a,&qb
+          end
+          ins.send :initialize,*o,&b
+          ins
+        else
+        r=send :"do_class_func", data,*o,&b
+        end
+      else
+        super
+      end
+      else
+        do_class_func fun,*o,&b
+      end
+    end
+  end
+end 
 
 module GirBind::Dispatch
   include GirBind::Built
@@ -2289,12 +2465,13 @@ module GirBind::Dispatch
   end
 
   def method_missing m,*o,&b
+    #p self
     if !(fun=find_module_function(m.to_s))
       fun = GirBind.gir.find_by_name( ((get_lib_name == "Cairo") ? "cairo" : get_lib_name),m.to_s)
 
       if fun
         builder,alist,rt,oa = get_function(fun,"module_func")
-        data = Gtk.module_func :"#{prefix.downcase}_#{m}",alist,rt,oa
+        data = module_func :"#{prefix.downcase}_#{m}",alist,rt,oa
         do_module_func data,*o,&b
       else
         super
@@ -2307,17 +2484,25 @@ module GirBind::Dispatch
 
   def set_lib_name name
     @lib_name = name.split("-")[0]
-
+    n = @lib_name == "Cairo" ? "cairo" : @lib_name    
     self.class_eval do
-      const_set :Lib,kls=Class.new()
-      kls.extend FFI::Lib
-      n = @lib_name == "Cairo" ? "cairo" : @lib_name
-      ln = GirBind.gir.shared_library(n).split(",")[0]
-      kls.ffi_lib ln
+      if self.const_defined? :Lib
+      else
+        #p self
+        kls=GirBind.define_class(self,:Lib)
+       ## p 88
+        kls.extend FFI::Lib
+   
+        ln = GirBind.gir.shared_library(n).split(",")[0]
+#        # p :sl
+        kls.ffi_lib ln
+#        # p :set_lib,ln
+      end
     end
-
-    n = @lib_name == "Cairo" ? "cairo" : @lib_name
+#    # p :trwee,self   
     prefix GirBind.gir.get_c_prefix(n)
+   # p self,:setl
+    n
   end
 
   def get_lib_name
@@ -2325,7 +2510,11 @@ module GirBind::Dispatch
   end
 
   def const_missing(c)
-    setup_class c
+   # p self;c
+    if !(kls=setup_class(c))
+      super
+    end
+    kls
   end
 
   def setup_class c
@@ -2336,109 +2525,15 @@ module GirBind::Dispatch
         parent = check_setup_parents(klass)
       end
 
-      cls = Class.new(parent ||= GirBind::Base)
-      this = self
-     
-      cls.class_eval do
-        @ns = this 
-        
-        extend GirBind::Built
-
-        class << self
-          attr_reader :ns,:name
-        end
-
-        @name = klass.name
-        def self._gir_info
-         ::GirBind.gir.find_by_name(ns.get_lib_name,s="#{name}")
-        end
-
-        prefix "#{@ns.prefix}_#{name}".downcase
-
-        class << self
-          attr_reader :get_gtype_name
-          def get_gtype
-            GObject.type_from_name get_gtype_name
-          end
-        end
-
-        @get_gtype_name = ns.get_lib_name+(@name)
-
-
-        def self.new *o,&b
-          method_missing :new,*o,&b
-        end
-
-        def self.method_missing m,*o,&b
-          if !(fun=find_class_function("#{m}"))
-          fun = (qc=_gir_info).find_method("#{m}")
-
-          if fun
-            builder,alist,rt,oa = get_function(fun,"class_func")
-            data = send "class_func", :"#{ns.prefix.downcase}_#{@name.downcase}_#{m}",alist,rt,oa
-
-            if fun.constructor?
-              ins = allocate
-
-              qq=ns
-              ins.set_constructor() do |*a,&qb|
-                send :"do_class_func", data,*a,&qb
-              end
-              ins.send :initialize,*o,&b
-              ins
-            else
-            r=send :"do_class_func", data,*o,&b
-            end
-          else
-            super
-          end
-          else
-            do_class_func fun,*o,&b
-          end
-        end
-
-        def method_missing m,*o,&b
-          ns = self.class
-fun = nil
-            sc = self.class
-           # p fun,:fun,m
-            #p sc._gir_info.find_method("m")
-            until fun or sc == GirBind::Base
-              if !(fun=sc.find_instance_function(m.to_s))
-                (fun = (qc=sc._gir_info).find_method("#{m}"))
-                 GObjectIntrospection.base_info_ref(qc.to_ptr)
-              else
-                
-              end
-              sc=sc.superclass unless fun
-            end
-            ns=sc
-            fun
-        
-
-          if fun and !fun.is_a?(Array)
-            a =[self]
-            a.push *o
-            builder,alist,rt,oa = get_function(fun,"class_func")
-            list = [:pointer]
-            list.push *alist; #p alist
-            data = sc.instance_func ("#{sc.ns.prefix}_#{sc.name}_#{m}".downcase).to_sym,list,rt,oa
-            #p data
-            r=ns.send :"do_instance_func", data,*a,&b
-          elsif fun.is_a?(Array)
-            a =[self]
-            a.push *o
-            sc.do_instance_func(fun,*o,&b)
-          else
-            super
-          end
-        end
-      end 
-      
-      const_set(c,cls)
+      (parent ||= GirBind::Base)
+      cls = GirBind.define_class(self,klass.name.to_sym,parent)
+      cls.extend GirBind::ClassBase
+      cls.include GirBind::ObjectBase
+      cls.init_binding klass,self
       cls
     else
-      super
+      nil
     end
   end
 end
+p 88
