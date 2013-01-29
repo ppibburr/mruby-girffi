@@ -53,6 +53,12 @@ module GirBind
     rescue => e
 
     end
+
+    begin
+      load w,'libmruby_girffi_glib_extra';
+    rescue => e
+
+    end
     
     return r
   end
