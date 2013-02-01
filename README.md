@@ -31,7 +31,7 @@ cd mruby-girffi-extras
 rake
 sudo rake install # needs root
 
-/path/to/mruby/bin/mruby /path/to/this_repo/example/example.rb
+/path/to/mruby/bin/mruby /path/to/mruby/build/mrbgems/mruby-girffi/example/example.rb
 ```
 Example
 ===

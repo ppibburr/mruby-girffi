@@ -26,10 +26,12 @@ make
 
 cd .. # wherever you wish to clone mruby-girffi-extras
 git clone https://github.com/ppibburr/mruby-girffi-extras
+
 cd mruby-girffi-extras
 rake
 sudo rake install # needs root
-mruby /path/to/this_repo/example/example.rb
+
+/path/to/mruby/bin/mruby /path/to/this_repo/example/example.rb
 ```
 Example
 ===
