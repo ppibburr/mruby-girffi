@@ -4,6 +4,7 @@
 
 module FFI
   TYPES = {
+    :self => :pointer,
     :int=>CFunc::Int,
     :uint=>CFunc::UInt32,
     :bool=>CFunc::Int,

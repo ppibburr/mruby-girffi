@@ -9,20 +9,23 @@ module GirBind
       ret = a.pop
       gargs = a.first
       nulls = []
+
       gargs.find_all_indices do |c|
         c.is_a?(Hash) and c[:allow_null]
       end.each do |ni|
         gargs[ni] = gargs[ni][:allow_null]
         nulls << ni
       end
+
       rargs = gargs.clone
       rargsidx = []
+
       rargs.each_with_index do |arg,i|
         rargsidx << i
       end
 
 
-      (cargs = gargs.find_all() do |a| a.is_a?(Hash) || a ==:error || a==:data || a==:self || a == :destroy end).each do |a|
+      (cargs = gargs.find_all() do |a| a.is_a?(Hash) || a ==:error || a==:data || a == :destroy end).each do |a|
         indi = rargs.find_all_indices do |q|
           q == a
         end.each do |idx|
@@ -33,22 +36,21 @@ module GirBind
   
       lib_args = gargs.map do |a|
         t = a
+
         if t.is_a?(Array)
           t = :pointer
         end
+
         if t.is_a?(Hash)
-      # # p 66
-      ## p t
-          t=t[t.keys[0]]
+          t=:pointer#t[t.keys[0]]
           if t.is_a?(Array)
             t = :pointer
           end
-        #  # p 44
         end
+
         if !(bt = GirBind::Builder.find_type(t) || (FFI::Lib.enums[t] ? :int : nil))
           FFI::Lib.callbacks[t] ? t : :pointer
         else
-          #p bt,:BT
           bt
         end
       end
@@ -156,7 +158,7 @@ module GirBind
         
           # resolve ruby arguments
           rargsidx.each_with_index do |i,oi|
-            v = make_pointer(o[oi])
+            v = GirBind::Builder.make_pointer(o[oi])
             oargs[i] = v
           end
           
@@ -193,11 +195,11 @@ module GirBind
     end
     
     def self.rary2cary ary,type
-     ## p type
       type = type == CFunc::Pointer ? type : find_type(type)
       raise TypeError.new("Cannot resolve type: #{type}") unless type
       
       out = (t=FFI::Lib.find_type(GirBind::Builder.find_type(type)))[ary.length]
+
       ary.each_with_index do |q,i|
         if [::String,Integer,Float,CFunc::Pointer].find do |c| q.is_a?(c) end
           if FFI::C_NUMERICS.index(t)
@@ -207,6 +209,7 @@ module GirBind
             else
               raise TypeError.new("Cannot pass object of type #{q.class}, as #{t}")
             end
+
           elsif [CFunc::Pointer].index(t) or q.respond_to?(:ffi_ptr)
             if [::String,Integer,Float,CFunc::Pointer].find do |c| q.is_a?(c) end
               ptr = CFunc::Pointer.malloc(0)
@@ -216,32 +219,23 @@ module GirBind
               raise "Cannot pass object of #{q.class} as, #{t}"
             end
           end
+
         else
           raise TypeError.new("Can not convert #{q.class} to #{type}")
         end
       end
+
       return out
     rescue => e
-     # p e
       raise e
     end 
     
     def self.alloc type
-      #p type
       if FFI::C_NUMERICS.index(type)
-       ## p type
         return type.new
       elsif type == CFunc::Pointer
         return type.malloc(0)
       end
-    end
-
-    def instance_func sym,args,ret,result=nil,raise_on=nil,&pb
-      s=sym.to_s.split(prefix+"_")
-      s.shift
-      s=s.join("#{prefix}_")
-      data = self.instance_functions[s] = [sym,args,ret,result,raise_on,pb]
-data
     end
     
     def set_lib lib
@@ -253,70 +247,86 @@ data
     end
 
     def self.result_to_ruby(gargs,result)
-            v=gargs[result][:value]
-            btype = gargs[result][:out]
-           # p btype,:fgh
-            if btype == :string
-              v=v.to_s
-            elsif k=FFI.cnum2rnum(v,btype)
-              v=k
-            end
-            return v  
+      v=gargs[result][:value]
+      btype = gargs[result][:out]
+
+      if btype == :string or btype == :utf8 or btype == :filename
+        v=v.to_s
+      elsif k=FFI.cnum2rnum(v,btype)
+        v=k
+      end
+
+      return v  
     end
     
     def self.process_return ret,retv,gargs,result,raise_on,&b
-        o = []
-        if result.is_a?(Array)
-          result.each do |r|
-            is_ary = nil
-            if r.is_a?(Array)
-              is_ary = r.pop
-              r = r.shift
-            end
-            if r == -1
-              o << result_to_ruby([{:out=>ret,:value=>retv}],0)
-              next
-            end
-          
-            if gargs[r][:value].is_a?(CFunc::CArray)
-              ret_ary = []
-              btype = gargs[r][:out][0]
-             
-              upto = (is_ary ? gargs[is_ary][:value].value : gargs[r][:value].size-1)
-              for i in 0..upto-1
-                v = gargs[r][:value][i].value 
-                if btype == :string
-                  v=v.to_s
-                end
-                ret_ary[i] = v 
-              end
-          
-              o << ret_ary
-            else
-              #p gargs[r]
-              v = result_to_ruby(gargs,r)
-              o << v
-            end
-            
+      o = []
+      if result.is_a?(Array)
+        result.each do |r|
+          is_ary = nil
+          if r.is_a?(Array)
+            is_ary = r.pop
+            r = r.shift
           end
+          if r == -1
+            o << result_to_ruby([{:out=>ret,:value=>retv}],0)
+            next
+          end
+        
+          if gargs[r][:value].is_a?(CFunc::CArray)
+            ret_ary = []
+            btype = gargs[r][:out][0]
+            upto = (is_ary and is_ary > -1 ? gargs[is_ary][:value].value : gargs[r][:value].size-1)
+            for i in 0..upto-1
+              v = gargs[r][:value][i].value 
+              if btype == :string or btype ==:utf8 or btype == :filename
+                v=v.to_s
+              end
+              ret_ary[i] = v
+              gargs[r][:value][i] = nil # free it 
+            end
+            gargs[r][:value] = nil # free array
+            o << ret_ary
+          else
+            #p gargs[r]
+            v = result_to_ruby(gargs,r)
+            gargs[r][:value]=nil # free the pointer?
+            o << v
+          end
+          
         end
+      end
 
       r = o.empty? ? result_to_ruby([{:out=>ret,:value=>retv}],0) : (o.length == 1 ? o[0] : o)
-      #p gargs if ret == :bool
+
       if b
         return b.call(r)
       end
+
       return check_enum_return(ret,r)               
     end
 
     def self.check_enum_return ret,r
-          if e=ret.enum?
-            r = CFunc::Int.refer(r.addr).value
-            e[r]
-          else
-            r
-          end
+      if e=ret.enum?
+        r = CFunc::Int.refer(r.addr).value
+        e[r]
+      else
+        r
+      end
     end 
+
+    def self.resolve_arguments_enum(func,o)
+      renums = func.rargs.find_all_indices do |e|
+        e.is_a?(Symbol) and e.enum?
+      end
+      
+      renums.each do |i|
+        ri = func.rargsidx.index(i)
+        e = func.rargs[i].enum?
+        o[ri] = e.index(o[ri]) unless o[ri].is_a? Numeric
+      end
+      o
+    end
   end
 end
 

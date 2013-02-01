@@ -4,56 +4,75 @@
 
 module GirBind::Dispatch
   include GirBind::Built
-  def get_methods
-    if @methods
-      @methods
-    else
-      q=GirBind.gir.find_by_name( ((get_lib_name == "Cairo") ? "cairo" : get_lib_name),m.to_s)
-      @methods = q.find_all do |i|
-          i.is_a?(GObjectIntrospection::IFunctionInfo) and !i.method?
-      end 
-      @methods
-    end
-  end
+
+
 
   def method_missing m,*o,&b
-    #p self
-    if !(fun=find_module_function(m.to_s))
-      fun = GirBind.gir.find_by_name( ((get_lib_name == "Cairo") ? "cairo" : get_lib_name),m.to_s)
+    if !(fun=find_module_function(m))
+      q=((get_lib_name == "Cairo") ? "cairo" : get_lib_name)
+      fun = GirBind.gir_for(q).find_by_name( q,m.to_s)
 
       if fun
-        builder,alist,rt,oa = get_function(fun,"module_func")
-        data = module_func :"#{prefix.downcase}_#{m}",alist,rt,oa
-        do_module_func data,*o,&b
+        func = setup_function(fun)
+        bind_function(func,m) if func
+        super if !func
+
+        send m,*o,&b
       else
         super
       end
-    else
-      #p fun, o
-      do_module_func fun,*o,&b
+    else;
+
+      bind_function fun,m
+
+      send m,*o,&b
     end
+  end
+
+  def setup_function fun
+    builder,alist,rt,oa = get_function(fun,"module_func")
+
+    return if builder==nil
+    alist.find_all_indices do |q| q == nil end.each do |i| alist[i] = :pointer end
+  #  p m if m == :init
+    data = module_func(:"#{prefix.downcase}_#{fun.name}",alist,rt,oa)
+
+    find_module_function(fun.name.to_sym)
+  end
+
+  def bind_function fun,m
+    class << self;self;end.define_method m do |*oo,&bb|
+      fun.call *oo,&bb
+    end
+    true
   end
 
   def set_lib_name name
     @lib_name = name.split("-")[0]
     n = @lib_name == "Cairo" ? "cairo" : @lib_name    
+
     self.class_eval do
-      if self.const_defined? :Lib
-      else
-        #p self
+
+      if !self.const_defined?(:Lib)
         kls=GirBind.define_class(self,:Lib)
-       ## p 88
+  
         kls.extend FFI::Lib
-   
-        ln = GirBind.gir.shared_library(n).split(",")[0]
-#        # p :sl
+  
+        ln = ir=GObjectIntrospection::IRepository.new
+        ln.require(n)
+        ln=ln.shared_library(n)
+        ln = ln.split(",")[0]
+
         kls.ffi_lib ln
-#        # p :set_lib,ln
       end
+      self
     end
-#    # p :trwee,self   
-    prefix GirBind.gir.get_c_prefix(n)
-   # p self,:setl
+
+    ir=GObjectIntrospection::IRepository.new
+    ir.require n
+
+    prefix ir.get_c_prefix(n)
+
     n
   end
 
@@ -62,31 +81,36 @@ module GirBind::Dispatch
   end
 
   def const_missing(c)
-   # p self;c
     if !(kls=setup_class(c))
       super
     end
+
     kls
   end
 
   def setup_class c
-    klass = GirBind.gir.find_by_name(@lib_name,s="#{c}")#.find_all do |i| i and i.is_a?(GObjectIntrospection::IObjectInfo) end
+    klass = GirBind.gir_for(@lib_name).find_by_name(@lib_name,s="#{c}")#.find_all do |i| i and i.is_a?(GObjectIntrospection::IObjectInfo) end
     parent = nil
+
     if klass
       if klass.respond_to?(:parent) and parent = klass.parent
         parent = check_setup_parents(klass)
       end
 
       (parent ||= GirBind::Base)
+
       cls = GirBind.define_class(self,klass.name.to_sym,parent)
+
       cls.extend GirBind::ClassBase
       cls.include GirBind::ObjectBase
       cls.init_binding klass,self
+
       cls
     else
       nil
     end
   end
 end
-p 88
+
+#load '','libmruby_gir'
 

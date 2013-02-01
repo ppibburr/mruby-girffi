@@ -21,6 +21,17 @@ module FFI
     CFunc::call(CFunc::Pointer, get_dlopen(),lib,true )
   end
 
+  class Func
+    attr_accessor :result_type,:arguments_type,:name
+    def initialize name
+      @name = name
+    end
+
+    def call *o
+      @cf ||= CFunc::define_function(result_type,name,*arguments_type)
+      @cf.call *o
+    end
+  end
 
   def ffi_lib lib
     @library = get_library_handle_for lib
@@ -33,34 +44,34 @@ module FFI
   end
 
   def call_func name,types,*o
+    o.each_with_index do |q,i|
+      if q.respond_to?(:ffi_ptr)
+        o[i] = q.ffi_ptr
+      elsif q.is_a?(Numeric)
+#        # p :rbum2cnum
+          o[i] = FFI.rnum2cnum(q,types[0][i])
+      elsif o.is_a?(Proc)
+        exit
+      end
+    end
 
-o.each_with_index do |q,i|
-          if q.respond_to?(:ffi_ptr)
-            o[i] = q.ffi_ptr
-          elsif q.is_a?(Numeric)
-   #        # p :rbum2cnum
-             o[i] = FFI.rnum2cnum(q,types[0][i])
-          elsif o.is_a?(Proc)
-            exit
-          end
-        end
-    if !(FFI::Lib.funcs[name])
-    types = [[],nil] if types.length == 0
-    name=name.to_s
-    ptr = CFunc::call(CFunc::Pointer, "dlsym", @library, name)
-    f=CFunc::FunctionPointer.new(ptr)
-   
-    [:result_type,f.result_type = find_type(types.last)]
-    ta=[]
-    types[0].each do |t|
-    ta << find_type(t)
-      
+    if !(f=FFI::Lib.funcs[name])
+      types = [[],nil] if types.length == 0
+      name=name.to_s
+      ptr = CFunc::call(CFunc::Pointer, "dlsym", @library, name)
+      f=CFunc::FunctionPointer.new(ptr)
+      #f = Func.new name
+      [:result_type,f.result_type = find_type(types.last)]
+      ta=[]
+      types[0].each do |t|
+      ta << find_type(t)
+        
+      end
+      f.arguments_type=ta
+  #;exit
+      FFI::Lib.funcs[name] = f
     end
-    f.arguments_type=ta
-#;exit
-    FFI::Lib.funcs[name] = f
-    end
-    f=FFI::Lib.funcs[name]
+    #f=FFI::Lib.funcs[name]
     #name,f
     
     r=f.call(*o)
@@ -69,23 +80,18 @@ o.each_with_index do |q,i|
       p :kk if !r
       r.value == 1
     else
-      p :tt if !r
-      r.value
+      #p "";p ""
+      r
     end
   end
 
   def typedef *o
     @@types[o[1]] = q=find_type(o[0])
-
   end
 
   @@callbacks = {}
 
   def self.find_type t
-   ## p t,:in_find
-    #p @@types
-    #p @@types[t]
-    #p t
     @@types[t]  || (@@callbacks[t] ? CFunc::Closure : CFunc::Pointer)
   end
   
@@ -117,25 +123,24 @@ o.each_with_index do |q,i|
 
     @@cnt+=1
     $b << b=Proc.new do |*o|
-      # # p 90
-
-        o.each_with_index do |q,i|
-          if q.respond_to?(:ffi_ptr)
-            o[i] = q.ffi_ptr
-          elsif o.is_a?(Proc)
-            exit
-          end
+      o.each_with_index do |q,i|
+        if q.respond_to?(:ffi_ptr)
+          o[i] = q.ffi_ptr
+        elsif o.is_a?(Proc)
+          exit
         end
-
-        this.call_func(nameq,types,*o)
+      end
       
+      this.call_func(nameq,types,*o)
     end
-     if !@ins
-      (@ins ||=(class << self;self;end))
-      extend K
-     end
-     i = $b.length-1
-     K.define_method nameq,&$b[i]
+
+    if !@ins
+     (@ins ||=(class << self;self;end))
+     extend K
+    end
+
+    i = $b.length-1
+    K.define_method nameq,&$b[i]
   end
  end
 end
@@ -146,11 +151,13 @@ class FFI::AutoPointer
   end
 end
 
-module FFI;module Lib
-  def types
-    @@types
-  end
-end;end
+module FFI
+  module Lib
+    def types
+      @@types
+    end
+  end;
+end
 
 module FFI
   class AutoPointer
@@ -190,14 +197,14 @@ module FFI
     def enum t,a
       if a.find() do |q| q.is_a?(Integer) end
         b = []
-        #p a
+ 
         for i in 0..((a.length/2)-1)
           val= a[i*2] 
           idx = a[(i*2)+1]
           b[idx] = val
         end
+
         a=b
-       ## p a
       end
       @@enums[t] = a
       typedef :int,t

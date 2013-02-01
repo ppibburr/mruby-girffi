@@ -27,7 +27,6 @@ module GirBind
       :data=>:pointer,
       :self=>:pointer,
       :bool=>:bool,
-      :utf8=>:string,
       :short=>:short,
     :gboolean=>:bool,
     :guint=>:uint,

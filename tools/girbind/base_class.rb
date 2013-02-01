@@ -19,14 +19,11 @@ module GirBind
   
 
     def initialize *o
-#p :ei
       obj = get_constructor.call *o
       super(obj)
     end
- # $bb = []
+
     def set_constructor(*data, &b)
-   #  # p :qq
-  #    $BB << b
       @constructor = GirBind::Base::Construct.new(*data,&b)
     end
       

@@ -2,95 +2,107 @@
 # -File- girbind/builder.rb
 #
 
+# Handles method mapping and invoking.
 module GirBind
   module Builder
     def do_class_func f,*o,&b
-          sym,lib_args,gargs,args,rt,ret,result,raise_on,pb = do_func_head f,*o,&b
-          retv = self.ns::Lib.call_func(sym,[lib_args,rt],*args)
-          GirBind::Builder.process_return(ret,retv,gargs,result,raise_on,&pb)
+      if !(func=class_functions[f])
+        raise "no class method"
+      end
+
+      func.call *o,&b
     end
 
-    def do_func_head f,*o,&b
-      sym,args,ret,result,raise_on,pb = f
-      sym,ret,rargs,gargs,cargs,lib_args,rargsidx,nulls = GirBind::Builder.build_args([sym,args,ret])
-      z=lib_args.map do |a| ":#{a}" end.join(", ")
-      prefix = @prefix
-      rt=GirBind::Builder.find_type(ret)
-      
-      renums = rargs.find_all_indices do |e|
-        e.is_a?(Symbol) and e.enum?
-      end
-      
-      renums.each do |i|
-        ri = rargsidx.index(i)
-        e = rargs[i].enum?
-        o[ri] = e.index(o[ri]) unless o[ri].is_a? Numeric
-      end
- 
-      args = GirBind::Builder.compile_args(rargs,rargsidx,gargs,nulls,o,&b)  
 
-      return sym,lib_args,gargs,args,rt,ret,result,raise_on,pb
-    end
+    def do_module_func s,*o,&b
+      if !(func=module_functions[s])
+        raise "no module method"
+      end
 
-    def do_module_func f,*o,&b
-          sym,lib_args,gargs,args,rt,ret,result,raise_on,pb = do_func_head f,*o,&b
-          retv = self::Lib.call_func(sym,[lib_args,rt],*args)
-          GirBind::Builder.process_return(ret,retv,gargs,result,raise_on,&pb)
+      func.call *o,&b
     end
     
     def do_instance_func f,*o,&b
-          sym,lib_args,gargs,args,rt,ret,result,raise_on,pb = do_func_head f,*o,&b
-          retv = self.ns::Lib.call_func(sym,[lib_args,rt],*args)
-          GirBind::Builder.process_return(ret,retv,gargs,result,raise_on,&pb)
+      if !(func=instance_functions[f])
+        raise "no instance method"
+      end
+
+      func.call *o,&b
     end
     
-    def find_module_function m
-      module_functions[m]
-    end
-    
+    # when using these directly: use c prefixes
     def module_functions
       @module_functions||={}
-    end
-    
-    
-    def find_class_function m
-      class_functions[m]
     end
     
     def class_functions
       @class_functions||={}
     end
-    
-    
-    def find_instance_function m
-      instance_functions[m]
-    end
-    
+
     def instance_functions
       @instance_functions||={}
-    end  
-    
-    def class_func sym,args,ret,result=nil,raise_on=nil,&pb
-      s=sym.to_s.split(prefix+"_")
-      s.shift
-      s=s.join("#{prefix}_")
-      data = self.class_functions[s] = [sym,args,ret,result,raise_on,pb]
+    end 
+
+    # These provide method name reference of library functions (no c prefix)
+
+    def find_module_function m
+      if fun = module_functions.find do |f| q=:"#{prefix.downcase}_#{m}" ; f[1].symbol == q end
+        fun[1]
+      end
     end
     
+    def find_class_function m
+      if fun = class_functions.find do |f| f[1].symbol == :"#{prefix.downcase}_#{m}" end
+        fun[1]
+      end
+    end    
+
+    def find_instance_function m
+      if fun = instance_functions.find do |f| f[1].symbol == :"#{prefix.downcase}_#{m}" end
+        fun[1]
+      end
+    end 
+    
+    # Setup mapping of library functions to Module, Class, Instance
     def module_func sym,args,ret,result=nil,raise_on=nil,&pb
       s=sym.to_s.split(prefix+"_")
       s.shift
       s=s.join("#{prefix}_")
-      data = self.module_functions[s] = [sym,args,ret,result,raise_on,pb]
+      data = [sym,args.map do |a| a.is_a?(Symbol) ? a : a.clone end,ret,result,raise_on,pb]
+      module_functions[sym] = Function.new(self::Lib,*data.clone)
+      data
     end  
 
+    def class_func sym,args,ret,result=nil,raise_on=nil,&pb
+      s=sym.to_s.split(prefix+"_")
+      s.shift
+      s=s.join("#{prefix}_")
+      data = [sym,args.map do |a| a.is_a?(Symbol) ? a : a.clone end,ret,result,raise_on,pb]
+      class_functions[sym] = Function.new(self.ns::Lib,*data.clone)
+      data
+    end
+
+    def instance_func sym,args,ret,result=nil,raise_on=nil,&pb
+      s=sym.to_s.split(prefix+"_")
+      s.shift
+      s=s.join("#{prefix}_")
+      data = [sym,args.map do |a| a.is_a?(Symbol) ? a : a.clone end,ret,result,raise_on,pb]
+      instance_functions[sym] = Function.new(self.ns::Lib,*data.clone)
+      data
+    end
+
     def method_missing m,*o,&b
-      #p m
-      if f=find_module_function(m.to_s)
-       ## p f,*o
-        do_module_func(f,*o,&b)
-      elsif f=find_class_function(m.to_s)
-        do_class_func(f)
+      if f=find_module_function(m)
+        class << self;self;end.define_method m do |*k,&z|
+          f.call(*k,&z)
+        end
+
+        send m,*o,&b
+      elsif f=find_class_function(m)
+        class << self;self;end.define_method m do |*k,&z|
+          f.call(*k,&z)
+        end
+
         send m,*o,&b
       else
         super
@@ -98,7 +110,6 @@ module GirBind
     end
     
     def constructor *o,&b
-      # instruct the class function
       data = class_func *o,&b
       data
     end  

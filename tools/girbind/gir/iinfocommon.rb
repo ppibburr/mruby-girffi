@@ -4,7 +4,6 @@
 
 module GObjectIntrospection
   module Foo
-##
     def vfuncs
       a=[]
       for i in 0..n_vfuncs-1
@@ -30,7 +29,6 @@ module GObjectIntrospection
     end
 
     def get_methods
-    ## p 77;p get_n_methods
       a=[]
       for i in 0..CFunc::Int.refer(get_n_methods).value-1
         a << get_method(i)
