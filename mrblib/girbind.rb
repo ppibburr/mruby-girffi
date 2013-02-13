@@ -1381,6 +1381,49 @@ module GirBind
 end
 
 #
+# -File- girbind/string_utils.rb
+#
+
+module StringUtils
+  def self.is_cap str
+    str.downcase != str
+  end
+
+  def self.is_lc str
+    str.downcase == str
+  end
+  
+  # raw GString support needs to be bound
+  # before using this method
+  def self.camel2uscore str
+    str = str.clone
+    have_lc = nil
+    idxa = []
+    
+    for i in 0..str.length-1
+      if have_lc and is_cap(str[i])
+        str[i] = str[i].downcase
+        idxa << i
+        have_lc = false
+      elsif is_lc(str[i])
+        have_lc = true
+      else
+      end
+    end
+    
+
+    str = GLib::Lib.g_string_new(str)
+
+    idxa.each_with_index do |i,c|
+      GLib::Lib.g_string_insert str,i+c,"_"
+    end
+
+    s= GLib::Lib.g_string_free str,false
+    s.to_s.downcase
+  end
+end
+
+#
 # -File- girbind/class_base.rb
 #
 
@@ -1466,53 +1509,23 @@ module GirBind
      end
    end
 
-def is_cap str
-  str.downcase != str
-end
-
-def is_lc str
-  str.downcase == str
-end
-
-def camel2uscore str
-  str = str.clone
-  have_lc = nil
-  idxa = []
-  for i in 0..str.length-1
-    if have_lc and is_cap(str[i])
-      str[i] = str[i].downcase
-      idxa << i
-      have_lc = false
-    elsif is_lc(str[i])
-      have_lc = true
-    else
-    end
-  end
   
-
-  str = GLib::Lib.g_string_new(str)
-
-  idxa.each_with_index do |i,c|
- 
-    GLib::Lib.g_string_insert str,i+c,"_"
-  end
-
-  s= GLib::Lib.g_string_free str,false
-  s.to_s.downcase
-end
 
    def init_binding klass,ns
   
      @ns = ns
      @name = klass.name
+     
+     # add raw GString support
      if !@gstr_init
-       
        GLib::Lib.attach_function :g_string_new,[:string],:pointer
        GLib::Lib.attach_function :g_string_free,[:pointer,:bool],:string
        GLib::Lib.attach_function :g_string_insert,[:pointer,:int,:string],:bool      
      end
-     @gstr_init = true     
-     pn = camel2uscore(name)
+     
+     @gstr_init = true
+          
+     pn = StringUtils.camel2uscore(name)
 
      prefix "#{@ns.prefix}_#{pn}".downcase
 
