@@ -1466,11 +1466,35 @@ module GirBind
      end
    end
 
+def camel2uscore str
+  have_lc = nil
+  idxa = []
+  for i in 0..str.length-1
+    if have_lc and is_cap(str[i])
+      str[i] = str[i].downcase
+      idxa << i
+      have_lc = false
+    elsif is_lc(str[i])
+      have_lc = true
+    else
+    end
+  end
+  
+  str = GLib::String.new str
+
+  lxda.each_with_index do |i,c|
+    str.insert i+c,"_"
+  end
+  
+  str.to_s
+end
+
    def init_binding klass,ns
      @ns = ns
      @name = klass.name
-
-     prefix "#{@ns.prefix}_#{name}".downcase
+     pn = camel2uscore name
+     p pn
+     prefix "#{@ns.prefix}_#{pn}".downcase
 
      @get_gtype_name = ns.get_lib_name+(@name)
 
