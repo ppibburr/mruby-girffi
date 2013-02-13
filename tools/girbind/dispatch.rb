@@ -97,8 +97,7 @@ module GirBind::Dispatch
         parent = check_setup_parents(klass)
       end
 
-      # BUG:
-      # ran into this on messy slackware enviroment
+      # ran into this on messy slac
       if parent == Object
         parent = GObject::Object 
       end
