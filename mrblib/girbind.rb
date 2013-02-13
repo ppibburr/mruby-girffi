@@ -452,14 +452,24 @@ module GirBind
         rargsidx << i
       end
 
-
+      ioidxa = []
       (cargs = gargs.find_all() do |a| a.is_a?(Hash) || a ==:error || a==:data || a == :destroy end).each do |a|
         indi = rargs.find_all_indices do |q|
-          q == a
+          q == a 
         end.each do |idx|
-          rargsidx.delete_at(idx)
+          if (!a.is_a?(Hash) ? true : !a[:inout])
+            rargsidx.delete_at(idx)
+          else
+            ioidxa << idx
+          end
         end
-        rargs.delete(a)
+        if !a.is_a? Hash or !a[:inout]
+          rargs.delete(a)
+        end
+      end
+      
+      ioidxa.each do |i|
+        rargs[i] = rargs[i][:inout]
       end
   
       lib_args = gargs.map do |a|
@@ -543,6 +553,11 @@ module GirBind
           #p gargs
           f = gargs.find do |a| a.is_a?(Hash) and a[:callback] end
           func = gargs.index(f)
+       
+         # all the inouts
+          inouts = gargs.find_all() do |a| a.is_a?(Hash) and a[:inout] end
+          inoutsidxa = gargs.find_all_indices do |a| a.is_a?(Hash) and a[:inout] end
+    
           
          # all the out pointers we create and are omitted from ruby args
           outs = gargs.find_all() do |a| a.is_a?(Hash) and a[:out] end
@@ -590,7 +605,7 @@ module GirBind
             oargs[i] = v
           end
           
-          oargs  
+          [oargs,inoutsidxa]  
         else
           raise ArgumentError.new("'TODO: method name': wrong number of arguments (#{o.length} for #{first_null ? first_null : rargs.length})")
         end
@@ -647,10 +662,10 @@ module GirBind
               ptr = CFunc::SInt8[q.length]
               cnt = 0
               q.each_byte do |b|
-                ptr[cnt] = b
+                ptr[cnt].value = b
                 cnt += 1
               end
-              ptr[cnt] = 0 # null terminated is implicit. is this correct?
+              ptr[cnt].value = 0 # null terminated is implicit. is this correct?
               out[i].value = ptr
             else
               raise "Cannot pass object of #{q.class} as, #{t}"
@@ -811,8 +826,14 @@ module GirBind
 
      def call *o,&b
        n =GirBind::Builder.resolve_arguments_enum(self,o)
-       args = GirBind::Builder.compile_args(rargs,rargsidx,gargs,nulls,n,&b)
+       args,inoutsidxa = GirBind::Builder.compile_args(rargs,rargsidx,gargs,nulls,n,&b)
        #p lib_args,args if gargs.find do |g| g.is_a? Hash and g[:out] end
+       inoutsidxa.each do |i|
+         if args[i].is_a?(Numeric)
+           args[i] = FFI.rnum2cnum(args[i],gargs[i][:inout])
+         end
+         args[i] = args[i].addr
+       end
        retv = library.call_func(symbol,[lib_args,resolved_return_type],*args)
        (r=GirBind::Builder.process_return(return_type,retv,gargs,ruby_result,ruby_raise_on,&post_return))
 
@@ -1089,7 +1110,8 @@ def get_args m,allow_cb=true
   cb = nil
 
   m.args.each_with_index do |a,i|
-    out = a.direction == :out
+
+    out = [:out,:inout].index(a.direction)
     cb = a.closure
     ds = a.destroy
     be_null = a.may_be_null?
@@ -1124,10 +1146,14 @@ def get_args m,allow_cb=true
       outs << i if out
     end
     
-    if out
+    if out == 0
       ts = {:out=>ts}
     end
-
+    
+    if out == 1
+      ts = {:inout=>ts}
+    end
+    
     if cb > -1 and allow_cb
       ts = {:callback=>:a.argument_type.interface.name}
       data = cb
@@ -1278,6 +1304,31 @@ module GirBind
     end
   
     self
+  end
+end
+
+#
+# -File- girbind/debug.rb
+#
+
+module GirBind
+  def self.invoke_and_examine target,method_name,method_type,*args,&b
+    target.send method_name,*args,&b
+    case method_type
+    when :class
+      target.find_class_function method_name
+    when :module
+      target.find_module_function method_name
+    when :instance
+      f = target.find_instance_function method_name
+      sc = target.class
+      until f
+        f = sc.find_instance_function method_name      
+        sc = sc.superclass
+        break if sc == GirBind::Base or f
+      end
+      f
+    end
   end
 end
 
