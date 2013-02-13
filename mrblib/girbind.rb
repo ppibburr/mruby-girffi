@@ -1474,8 +1474,8 @@ def is_lc str
   str.downcase == str
 end
 
-
 def camel2uscore str
+  str = str.clone
   have_lc = nil
   idxa = []
   for i in 0..str.length-1
@@ -1489,20 +1489,31 @@ def camel2uscore str
     end
   end
   
-  str = GLib::String.new str
 
-  lxda.each_with_index do |i,c|
-    str.insert i+c,"_"
+  str = GLib::Lib.g_string_new(str)
+
+  idxa.each_with_index do |i,c|
+ 
+    GLib::Lib.g_string_insert str,i+c,"_"
   end
-  
-  str.to_s
+
+  s= GLib::Lib.g_string_free str,false
+  s.to_s.downcase
 end
 
    def init_binding klass,ns
+  
      @ns = ns
      @name = klass.name
-     pn = camel2uscore name
-     p pn
+     if !@gstr_init
+       
+       GLib::Lib.attach_function :g_string_new,[:string],:pointer
+       GLib::Lib.attach_function :g_string_free,[:pointer,:bool],:string
+       GLib::Lib.attach_function :g_string_insert,[:pointer,:int,:string],:bool      
+     end
+     @gstr_init = true     
+     pn = camel2uscore(name)
+
      prefix "#{@ns.prefix}_#{pn}".downcase
 
      @get_gtype_name = ns.get_lib_name+(@name)
