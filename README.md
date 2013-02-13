@@ -4,7 +4,7 @@ Library for mruby that provides means to dynamically wrap c libraries.
 Mainly GLib based libraries, but exposes idioms suited to other c libraries as well.  
 
 Really you need to...  
-See https://github.com/ppibburr/mruby-gnome-ffi (integrates gobject-introspection, to dynamically bind GLib libraries automatically)
+See https://github.com/ppibburr/mruby-ffi-gnome (integrates gobject-introspection, to dynamically bind GLib libraries automatically)
 
 Setup
 ===
