@@ -1466,6 +1466,15 @@ module GirBind
      end
    end
 
+def is_cap str
+  str.downcase != str
+end
+
+def is_lc str
+  str.downcase == str
+end
+
+
 def camel2uscore str
   have_lc = nil
   idxa = []
