@@ -24,7 +24,7 @@ module GirBind
           sc=sc.superclass unless fun
         end
       end
-
+      
       ns=sc
 
       if fun and !fun.is_a?(GirBind::Builder::Function) 
@@ -32,7 +32,7 @@ module GirBind
         sc.bind_instance_function(func,m) if func
        
        GObjectIntrospection.base_info_unref(qc.to_ptr)
-        
+
        super if !func
 
         send m,*o,&b

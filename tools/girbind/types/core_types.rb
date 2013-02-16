@@ -24,7 +24,10 @@ module FFI
     :int8=>CFunc::SInt8,
     :int32=>CFunc::Int,
     :short=>CFunc::SInt16,
-    :ushort=>CFunc::UInt16
+    :ushort=>CFunc::UInt16,
+    :callback=>CFunc::Closure,
+    :struct=>CFunc::Pointer,
+    :array=>CFunc::CArray
   }
 
 end

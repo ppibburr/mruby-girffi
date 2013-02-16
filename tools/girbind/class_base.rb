@@ -10,7 +10,57 @@ module GirBind
   end
 
   module ClassBase
+    include WrapHelp
     include GirBind::Built
+
+    def give_struct struct
+      sfa = []
+
+      struct.fields.each do |f| 
+        it = f.field_type.interface_type
+        
+        if f.field_type.tag == :interface
+          ifc = f.field_type.interface
+          ns = ifc.namespace
+          
+          if ns == "cairo" then ns = "Cairo" end
+          
+          n = ifc.name
+          go = nil
+          
+          if it == :callback
+          
+          elsif it == :struct or it == :object
+            mns = NSA[ns] ? NSA[ns].keys[0] : ::Object.const_get(ns.to_sym)
+            go = mns.setup_class n.to_sym
+
+            if go and go::Struct.respond_to?(:"is_struct?")
+              it = go::Struct
+            end
+          end
+        else
+        
+        end
+
+        sfa.push *[f.name.to_sym,GirBind::GB_TYPES[it] || it || :pointer]
+
+      
+        class_eval do
+          qq = GirBind.define_class self,:Struct,FFI::Struct
+          self::Struct.layout *sfa
+        end
+      
+        if self == GLib::Data
+          sfa =  [:next,self::Struct,
+                  id,:guint,
+                  data,:gpointer,
+                  destroy_func,:pointer]
+          self::Struct.layout *sfa
+        end     
+      end
+        
+      nil       
+    end
 
     def _gir_info
       z=((ns.get_lib_name == "Cairo") ? "cairo" : ns.get_lib_name)
@@ -19,23 +69,25 @@ module GirBind
 
     def setup_instance_function fun
       builder,alist,rt,oa = get_function(fun,"class_func")
-  
+
       return if builder==nil
       alist.find_all_indices do |q| q == nil end.each do |i| alist[i] = :pointer end
 
       list = [:pointer]
       list.push *alist;
 
-      data = class_func(:"#{prefix.downcase}_#{fun.name}",list,rt,oa)
+      data = instance_func(:"#{prefix.downcase}_#{fun.name}",list,rt,oa)
   
-      f = find_class_function(fun.name.to_sym)
+      f = find_instance_function(fun.name.to_sym)
       f.constructor = fun.constructor? 
       f
     end
 
     def bind_instance_function fun,m
       define_method m do |*oo,&bb|
-        fun.call self,*oo,&bb
+        r = fun.call self,*oo,&bb
+        r = self.class.check_cast(r,fun)
+        r
       end
       true
     end
@@ -44,8 +96,9 @@ module GirBind
       builder,alist,rt,oa = get_function(fun,"class_func")
   
       return if builder==nil
+
       alist.find_all_indices do |q| q == nil end.each do |i| alist[i] = :pointer end
-    #  p m if m == :init
+
       data = class_func(:"#{prefix.downcase}_#{fun.name}",alist,rt,oa)
   
       f = find_class_function(fun.name.to_sym)
@@ -68,7 +121,9 @@ module GirBind
 
           ins
         else
-          fun.call *oo,&bb
+          r = fun.call *oo,&bb
+          r = check_cast(r,fun)
+          r          
         end
       end
       true
@@ -84,53 +139,23 @@ module GirBind
      end
    end
 
-def is_cap str
-  str.downcase != str
-end
-
-def is_lc str
-  str.downcase == str
-end
-
-def camel2uscore str
-  str = str.clone
-  have_lc = nil
-  idxa = []
-  for i in 0..str.length-1
-    if have_lc and is_cap(str[i])
-      str[i] = str[i].downcase
-      idxa << i
-      have_lc = false
-    elsif is_lc(str[i])
-      have_lc = true
-    else
-    end
-  end
   
-
-  str = GLib::Lib.g_string_new(str)
-
-  idxa.each_with_index do |i,c|
- 
-    GLib::Lib.g_string_insert str,i+c,"_"
-  end
-
-  s= GLib::Lib.g_string_free str,false
-  s.to_s.downcase
-end
 
    def init_binding klass,ns
   
      @ns = ns
      @name = klass.name
+     
+     # add raw GString support
      if !@gstr_init
-       
        GLib::Lib.attach_function :g_string_new,[:string],:pointer
        GLib::Lib.attach_function :g_string_free,[:pointer,:bool],:string
        GLib::Lib.attach_function :g_string_insert,[:pointer,:int,:string],:bool      
      end
-     @gstr_init = true     
-     pn = camel2uscore(name)
+     
+     @gstr_init = true
+          
+     pn = StringUtils.camel2uscore(name)
 
      prefix "#{@ns.prefix}_#{pn}".downcase
 
@@ -144,18 +169,16 @@ end
     end
 
     def method_missing m,*o,&b
-     # p self
-     # p m,:d
       if !(fun=find_class_function(m))
         fun = (qc=_gir_info).find_method("#{m}")
-
+        
         if fun
           func = setup_function(fun)
           bind_function(func,m) if func
        
           super if !func
 
-          send m,*o,&b
+          r = send m,*o,&b
         else
           super
         end

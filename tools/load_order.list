@@ -15,6 +15,8 @@
 ./girbind/core/gstrv.rb
 ./girbind/build_utility.rb
 ./girbind/girbind_setup.rb
+./girbind/debug.rb
 ./girbind/object_base.rb
+./girbind/string_utils.rb
 ./girbind/class_base.rb
 ./girbind/dispatch.rb

@@ -13,7 +13,7 @@ module GirBind
     begin
       kls=::Object.const_get(ns.to_sym)
     rescue
-      kls=GirBind.define_class(::Object,ns.to_sym)
+      kls=GirBind.define_module(::Object,ns.to_sym)
     end
    
     if !kls.is_a?(GirBind::Dispatch)
@@ -29,7 +29,7 @@ module GirBind
        begin
          kls=::Object.const_get(nsq.to_sym)
        rescue
-         kls=GirBind.define_class(::Object,nsq.to_sym)
+         kls=GirBind.define_module(::Object,nsq.to_sym)
        end
 
        if !kls.is_a?(GirBind::Dispatch)

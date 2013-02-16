@@ -5,8 +5,8 @@
 module GirBind::Dispatch
   include GirBind::Built
 
-
-
+  include WrapHelp
+  
   def method_missing m,*o,&b
     if !(fun=find_module_function(m))
       q=((get_lib_name == "Cairo") ? "cairo" : get_lib_name)
@@ -17,14 +17,12 @@ module GirBind::Dispatch
         bind_function(func,m) if func
         super if !func
 
-        send m,*o,&b
+        r = send m,*o,&b
       else
         super
       end
     else;
-
       bind_function fun,m
-
       send m,*o,&b
     end
   end
@@ -33,8 +31,9 @@ module GirBind::Dispatch
     builder,alist,rt,oa = get_function(fun,"module_func")
 
     return if builder==nil
+
     alist.find_all_indices do |q| q == nil end.each do |i| alist[i] = :pointer end
-  #  p m if m == :init
+
     data = module_func(:"#{prefix.downcase}_#{fun.name}",alist,rt,oa)
 
     find_module_function(fun.name.to_sym)
@@ -42,13 +41,16 @@ module GirBind::Dispatch
 
   def bind_function fun,m
     class << self;self;end.define_method m do |*oo,&bb|
-      fun.call *oo,&bb
+      r = fun.call *oo,&bb
+      r = check_cast(r,fun)
+      r
     end
     true
   end
 
   def set_lib_name name
     @lib_name = name.split("-")[0]
+    NSA[name] = {self=>{}}
     n = @lib_name == "Cairo" ? "cairo" : @lib_name    
 
     self.class_eval do
@@ -81,41 +83,53 @@ module GirBind::Dispatch
   end
 
   def const_missing(c)
-    if !(kls=setup_class(c))
+    if !(kls=setup_class(c));
       super
     end
-
     kls
   end
 
   def setup_class c
-    klass = GirBind.gir_for(@lib_name).find_by_name(@lib_name,s="#{c}")#.find_all do |i| i and i.is_a?(GObjectIntrospection::IObjectInfo) end
+    NSA[@lib_name] ||= {self=>{}}
+    bound = NSA[@lib_name][self][c]
+    
+    return bound if bound
+    
+    lname = @lib_name
+    lname = "cairo" if @lib_name == "Cairo"
+    klass = GirBind.gir_for(lname).find_by_name(lname,s="#{c}")#.find_all do |i| i and i.is_a?(GObjectIntrospection::IObjectInfo) end
     parent = nil
 
     if klass
+    
       if klass.respond_to?(:parent) and parent = klass.parent
         parent = check_setup_parents(klass)
       end
 
-      # ran into this on messy slac
-      if parent == Object
-        parent = GObject::Object 
-      end
+
+
       
       (parent ||= GirBind::Base)
 
-      cls = GirBind.define_class(self,klass.name.to_sym,parent)
+      cls = GirBind.define_class(self,:"#{klass.name}",parent)
 
       cls.extend GirBind::ClassBase
       cls.include GirBind::ObjectBase
       cls.init_binding klass,self
 
-      cls
+     # if klass.respond_to? :class_struct
+     #   setup_class "#{c}Class"
+     # end  
+      
+      NSA[@lib_name][self][c] = cls
+      
+      if klass.respond_to? :fields
+      # cls.give_struct klass
+      end
+
+      return cls
     else
       nil
     end
   end
-end
-
-#load '','libmruby_gir'
 

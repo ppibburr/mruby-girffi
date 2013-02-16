@@ -20,6 +20,18 @@ def check_enum type
   end
   en
 end
+CALLBACKS = {}
+class Callback
+  attr_accessor :name,:return_type,:arguments,:n,:d
+  def initialize name,rt,n,args,d
+    @name = name
+    @arguments = args
+    @return_type = rt
+    @n = n
+    @d = d
+
+  end
+end
 
 def get_args m,allow_cb=true
   alist = []
@@ -29,7 +41,8 @@ def get_args m,allow_cb=true
   cb = nil
 
   m.args.each_with_index do |a,i|
-    out = a.direction == :out
+
+    out = [:out,:inout].index(a.direction)
     cb = a.closure
     ds = a.destroy
     be_null = a.may_be_null?
@@ -49,7 +62,17 @@ def get_args m,allow_cb=true
 
       outs << [i,length] if out
     else
-      ts = :pointer if ts == :interface
+ 
+      if ts == :interface and a.argument_type.interface_type == :object
+        iface = a.argument_type.interface
+        ts = {
+          :object => {
+            :namespace =>iface.namespace,
+            :name => iface.name.to_sym
+          }
+        }      
+      end
+      ts = :pointer if ts == :interface      
 
       if ts == :void
         ts = :pointer
@@ -58,18 +81,31 @@ def get_args m,allow_cb=true
       if en=check_enum(a.argument_type)
         ts = en
       else
-        ts = GirBind::Builder.find_type(ts)
+        ts = GirBind::Builder.find_type(ts) unless ts.is_a?(Hash)
       end
 
       outs << i if out
     end
     
-    if out
+    if out == 0
       ts = {:out=>ts}
     end
-
+    
+    if out == 1
+      ts = {:inout=>ts}
+    end
+    
     if cb > -1 and allow_cb
-      ts = {:callback=>:a.argument_type.interface.name}
+      ts = {:callback=>:"#{a.argument_type.interface.namespace}#{a.argument_type.interface.name}"}
+      if !FFI::Lib.callbacks[ts[:callback]]
+        # Store for auto gir usage
+        CALLBACKS[ts[:callback]] = cbk = Callback.new(ts[:callback],*get_callable(a.argument_type.interface));
+        
+        # FFI Compat
+        #(non auto-gobject use)        
+        (oo=Object.new).extend FFI::Lib
+        oo.callback cbk.name,cbk.arguments,cbk.return_type
+      end
       data = cb
     end
 
@@ -96,9 +132,12 @@ def get_args m,allow_cb=true
 end
 
 def get_callable m,allow_cb=true
+  return_is_object = nil
+  
   if (rt=m.return_type.tag) == :void
   else
     rt = m.return_type.interface_type
+    return_is_object = m.return_type.interface_type == :object
   end
 
   if rt.is_a? Array
@@ -114,7 +153,15 @@ def get_callable m,allow_cb=true
 
   alist,outs = get_args(m,allow_cb)
 
-  if en=check_enum(m.return_type)
+  if return_is_object
+    iface = m.return_type.interface
+    return_type = {
+      :object => {
+        :namespace =>iface.namespace,
+        :name => iface.name.to_sym
+      }
+    }
+  elsif en=check_enum(m.return_type)
     return_type = en
   end
 
@@ -131,6 +178,7 @@ def get_function m,func_where = "class_func"
       alist << :error
     end
   rescue => e
+  p e
     do_r = true
   end
 
@@ -159,19 +207,26 @@ def get_function m,func_where = "class_func"
   
   [meth,alist,return_type,oa] 
 end
+NSA={}
+
+def import_name_clash out
+    ns = out.namespace
+    ns = "Cairo" if ns == "cairo"
+    
+    unless NSA[ns]
+      NSA[ns] = {::Object.const_get(:"#{ns}")=>{}}
+    end
+    raise unless q=NSA[ns].keys[0].setup_class(:"#{out.name}" )
+ #   p [:iii,q,:oooo]
+  #  p NSA
+    return q
+end
 
 def check_setup_parents o
   out = o.parent
 
   if out
-    r=::Object.const_get(:"#{out.namespace}").const_get(:"#{out.name}")
-
-    if out.namespace == "GObject" and out.name == "Object"
-      GObject.const_get(:Object)
-      r = GObject::Object
-    end
-
-    r
+    import_name_clash(out)
   else
     GirBind::Base
   end

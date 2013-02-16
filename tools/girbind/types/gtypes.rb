@@ -52,7 +52,8 @@ module GirBind
     :gpointer=>:pointer,
     :filename=>:string,
     :gunichar=>:uint,
-    :object=>:pointer
+    :gtype=>:ulong,
+    :GType => :ulong
       }
 end
 

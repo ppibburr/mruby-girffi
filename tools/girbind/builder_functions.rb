@@ -24,14 +24,24 @@ module GirBind
         rargsidx << i
       end
 
-
+      ioidxa = []
       (cargs = gargs.find_all() do |a| a.is_a?(Hash) || a ==:error || a==:data || a == :destroy end).each do |a|
         indi = rargs.find_all_indices do |q|
-          q == a
+          q == a 
         end.each do |idx|
-          rargsidx.delete_at(idx)
+          if (!a.is_a?(Hash) ? true : !a[:inout])
+            rargsidx.delete_at(idx)
+          else
+            ioidxa << idx
+          end
         end
-        rargs.delete(a)
+        if !a.is_a? Hash or !a[:inout]
+          rargs.delete(a)
+        end
+      end
+      
+      ioidxa.each do |i|
+        rargs[i] = rargs[i][:inout]
       end
   
       lib_args = gargs.map do |a|
@@ -115,6 +125,11 @@ module GirBind
           #p gargs
           f = gargs.find do |a| a.is_a?(Hash) and a[:callback] end
           func = gargs.index(f)
+       
+         # all the inouts
+          inouts = gargs.find_all() do |a| a.is_a?(Hash) and a[:inout] end
+          inoutsidxa = gargs.find_all_indices do |a| a.is_a?(Hash) and a[:inout] end
+    
           
          # all the out pointers we create and are omitted from ruby args
           outs = gargs.find_all() do |a| a.is_a?(Hash) and a[:out] end
@@ -162,7 +177,7 @@ module GirBind
             oargs[i] = v
           end
           
-          oargs  
+          [oargs,inoutsidxa]  
         else
           raise ArgumentError.new("'TODO: method name': wrong number of arguments (#{o.length} for #{first_null ? first_null : rargs.length})")
         end
@@ -219,10 +234,10 @@ module GirBind
               ptr = CFunc::SInt8[q.length]
               cnt = 0
               q.each_byte do |b|
-                ptr[cnt] = b
+                ptr[cnt].value = b
                 cnt += 1
               end
-              ptr[cnt] = 0 # null terminated is implicit. is this correct?
+              ptr[cnt].value = 0 # null terminated is implicit. is this correct?
               out[i].value = ptr
             else
               raise "Cannot pass object of #{q.class} as, #{t}"
@@ -263,6 +278,8 @@ module GirBind
         v=v.to_s
       elsif k=FFI.cnum2rnum(v,btype)
         v=k
+      elsif btype.is_a?(Hash)
+        # not_process_object_wrapping
       end
 
       return v  
@@ -316,7 +333,7 @@ module GirBind
     end
 
     def self.check_enum_return ret,r
-      if e=ret.enum?
+      if !ret.is_a?(Hash) and e=ret.enum?
         r = CFunc::Int.refer(r.addr).value
         e[r]
       else
