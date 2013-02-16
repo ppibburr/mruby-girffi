@@ -852,16 +852,7 @@ module GirBind
          if n = gargs.find do |a| a.is_a?(Hash) and a[:callback] end
            if cb = CALLBACKS.find do |cb| cb[0] == n[:callback] end
              cb = cb[1]
-             cbk = Proc.new do |*o|
-               cb.arguments.each_with_index do |a,i|
-                 if a.is_a?(Hash) and obj=a[:object]
-                   ins = NSA[obj[:namespace]][NSA[obj[:namespace]].keys[0]][obj[:name]].wrap(o[i])
-                   o[i] = ins.class.upcast(ins)
-                 end
-               end
-               
-               b.call(*o)
-             end
+             cbk = GirBind.convert_params_closure b,cb.arguments
            end
          end
        end
@@ -1471,6 +1462,22 @@ module GirBind
   end
 end
 
+module GirBind
+  def self.convert_params_closure b,types
+    cb = Proc.new do |*o|
+      types.each_with_index do |a,i|
+        if a.is_a?(Hash) and obj=a[:object]
+          ins = NSA[obj[:namespace]][NSA[obj[:namespace]].keys[0]][obj[:name]].wrap(o[i])
+          o[i] = ins.class.upcast(ins)
+        end
+      end
+     
+      b.call(*o)
+    end
+             
+    cb
+  end
+end
 #
 # -File- girbind/string_utils.rb
 #
@@ -1717,8 +1724,29 @@ module GirBind
      prefix "#{@ns.prefix}_#{pn}".downcase
 
      @get_gtype_name = ns.get_lib_name+(@name)
-
+     
+     sa={}
+     
+     if klass.respond_to?(:signals)
+        klass.signals.map do |s|
+          sa[s.name] = get_callable(s)
+        end
+        
+        @signals = sa
+     end
      self
+   end
+   
+   def signals
+     @signals ||= {}
+     a = @signals.keys
+     a.push *superclass.signals unless superclass == GirBind::Base
+     a
+   end
+   
+   def get_signal_signature s
+     @signals ||= {}
+     n = @signals[s.to_s] or superclass.get_signal_signature(s) unless superclass == GirBind::Base
    end
 
     def new *o,&b
@@ -1881,7 +1909,7 @@ module GirBind::Dispatch
       nil
     end
   end
-
+end
 
 
 
