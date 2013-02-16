@@ -1419,6 +1419,7 @@ end
 #
 
 module GirBind
+  OBJECT_STORE = {}
   module ObjectBase
     def method_missing m,*o,&b
       fun = nil
@@ -1465,10 +1466,16 @@ end
 module GirBind
   def self.convert_params_closure b,types
     cb = Proc.new do |*o|
+      o.find_all_indices do |q|
+        GirBind.object_stored?(q)
+      end.each do |i|
+        o[i] = GirBind.object_stored?(o[i])
+      end   
+    
       types.each_with_index do |a,i|
         if a.is_a?(Hash) and obj=a[:object]
           ins = NSA[obj[:namespace]][NSA[obj[:namespace]].keys[0]][obj[:name]].wrap(o[i])
-          o[i] = ins.class.upcast(ins)
+          o[i] = (stored=GirBind.object_stored?(ins)) ? stored : ins.class.upcast(ins)
         end
       end
      
@@ -1523,13 +1530,32 @@ end
 
 
 module GirBind
+  # Store objects for signal arguments resolving and result of callables 
+  def self.object_stored? obj
+    OBJECT_STORE[CFunc::UInt32.get(obj.addr)]
+  end
+
   module WrapHelp
+    # resolves the most derived class an instance belongs to
+    # many functions return a cast to base class
+    # ie, Gtk::Widget#get_parent #=> Gtk::Widget instance
+    #    w=Gtk::Window.new(0)
+    #    w.add b=Gtk::Button.new
+    #    b.get_parent.class == Gtk::Widget
+    #  
+    # obviously we wanted it to resolve to Gtk::Window
+    # this enables just that
+    #
+    # also looks up to see if a object of the resolved upcast exists
+    # in the object store, and returns it if so
     def upcast(gobj)
       type = FFI::TYPES[:uint32]
       gtype = type.get(CFunc::Pointer.get(gobj.ffi_ptr))
       GObject.module_func :g_type_name,[:uint32],:string
       name = GObject.type_name(gtype)
       q = nil
+      
+      # find the class to cast to
       NSA.find do |ns|
         ns[1].find do |n|
           n[1].find do |c|
@@ -1540,10 +1566,24 @@ module GirBind
           end
         end
       end
+      
       if q
-        return q.wrap(gobj.ffi_ptr)
+        stored=GirBind.object_stored?(gobj.ffi_ptr)
+        
+        # return store if instance of the class respective of upcast
+        if stored.class == q
+          return stored
+        else
+          gobj = q.wrap(gobj.ffi_ptr)
+        end
       end
-      gobj
+      
+      addr = CFunc::UInt32.get(gobj.ffi_ptr.addr)
+      # we enable upcasts to not replace the existing mapped object
+      # doubtful it would ever happen, but could and should not redefine the original store
+      GirBind::OBJECT_STORE[addr] ||= gobj
+      
+      return gobj
     end
   
     def check_cast ret,fun
@@ -1682,7 +1722,8 @@ module GirBind
           end
 
           ins.send :initialize,*oo,&bb
-
+          addr = CFunc::UInt32.get(ins.ffi_ptr.addr)
+          GirBind::OBJECT_STORE[addr] = ins
           ins
         else
           r = fun.call *oo,&bb
