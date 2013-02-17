@@ -1785,6 +1785,11 @@ module GirBind
      a
    end
    
+   def properties
+     psa,len = GObject.object_class_list_properties(get_gtype)
+     p len
+   end
+   
    def get_signal_signature s
      @signals ||= {}
      n = @signals[s.to_s] or superclass.get_signal_signature(s) unless superclass == GirBind::Base
