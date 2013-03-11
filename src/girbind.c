@@ -8,12 +8,16 @@ girbind_define_module(mrb_state *mrb, mrb_value mod)
 {
   mrb_value klass;
   mrb_sym sym;
+
   mrb_check_type(mrb, mod, MRB_TT_MODULE);
   mrb_get_args(mrb, "on", &klass,&sym);
   struct RClass *kls = mrb_class_ptr(klass);
   const char* name = mrb_sym2name(mrb,sym);
-  mrb_define_module_under(mrb, kls, name);  
-  return mod;
+  struct RClass *where = mrb_define_module_under(mrb, kls, name);  
+  mrb_value obj;
+  obj = mrb_obj_value(where);
+  return obj;
+
 }
 
 mrb_value
@@ -26,8 +30,11 @@ girbind_define_class(mrb_state *mrb, mrb_value mod)
   mrb_get_args(mrb, "ono", &klass,&sym,&sc);
   struct RClass *kls = mrb_class_ptr(klass);
   const char* name = mrb_sym2name(mrb,sym);
-  mrb_define_class_under(mrb, kls, name,mrb_class_ptr(sc));  
-  return mod;
+  struct RClass *where = mrb_define_class_under(mrb, kls, name,mrb_class_ptr(sc));  
+
+  mrb_value obj;
+  obj = mrb_obj_value(where);
+  return obj;
 }
 
 mrb_value
