@@ -733,7 +733,6 @@ class Function
         a.callback
       end
       closure = b || @closure
-      p closure
       cb.set closure
     end
     
@@ -748,10 +747,7 @@ class Function
       end
       ptr
     end
-if @name == "g_timeout_add_full"
-p FFI::Library.callbacks
-  p pointers[1].read_int;exit# = CFunc::Int.new(300)
-end
+
     # call the function
     r = CFunc::libcall2(get_return_type,@where,@name.to_s,*invoked)
 
