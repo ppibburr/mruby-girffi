@@ -176,7 +176,7 @@ class FFI::Pointer < CFunc::Pointer
       c += 1
     end
     
-    ca[c].value = 0
+   # ca[c].value = 0
     return self
   end
   
@@ -478,9 +478,7 @@ class Argument < Struct.new(:object,:type,:struct,:array,:direction,:allow_null,
       if value.is_a?(CFunc::Closure)
         return value
       elsif cb=FFI::Library.callbacks[callback]
-        return FFI::Closure.add callback,cb[1],cb[0]
-      else
-        return FFI::DefaultClosure.new
+        return CFunc::Closure.new(cb[1],cb[0],&value)
       end
     elsif array
       ptr = CFunc::Pointer.malloc(4)
@@ -494,11 +492,16 @@ class Argument < Struct.new(:object,:type,:struct,:array,:direction,:allow_null,
   end
   
   include Cvalue2RubyValue
-  
+  NA = []
   # Sets the appropiate value for an Argument for Function#invoke
   def for_invoke
     if type == :string and direction == :in
-      return value
+      if q=value
+        q=value
+      else
+        return $mruby_cfunc_null_pointer
+      end 
+      return q
     end
     
     if type == :pointer
@@ -513,6 +516,7 @@ class Argument < Struct.new(:object,:type,:struct,:array,:direction,:allow_null,
 
     if type == :callback
       ptr.set_closure value if ptr.respond_to?(:set_closure)
+      NA << ptr
       return ptr
     end
     
@@ -689,7 +693,7 @@ class Function
     
     return map
   end
-  
+  NA = []
   attr_reader :arguments
   def invoke *args,&b
 
@@ -733,7 +737,7 @@ class Function
         a.callback
       end
       closure = b || @closure
-      p closure
+      NA << closure
       cb.set closure
     end
     
@@ -748,14 +752,19 @@ class Function
       end
       ptr
     end
-if @name == "g_timeout_add_full"
-p FFI::Library.callbacks
-  p pointers[1].read_int;exit# = CFunc::Int.new(300)
-end
+
     # call the function
     r = CFunc::libcall2(get_return_type,@where,@name.to_s,*invoked)
 
+    if cb=arguments.find do |a|
+        a.callback
+      end
+
+      cb.set nil
+    end
+    
     len = 1
+    
     if ary = @return_type.array
       len = ary.fixed_size
     end
@@ -771,7 +780,7 @@ end
 
       # default is to return array of out pointers and return value
       ra = get_args_to_return().map do |a|
-        ptr = pointers[a.index] if @name == "g_spawn_command_line_sync"
+        ptr = pointers[a.index]
 
         len = 1
         
@@ -1488,7 +1497,9 @@ module GirBind
     unless deps.index(q)
     
       q = "cairo" if q == "Cairo"
-      gir.require(q)
+      n = nil
+      n = "2.0" if q == "Gtk"
+      gir.require(q,n)
 
       da = []
 
@@ -1572,9 +1583,24 @@ module GirBind
   def self.GLib()
     mod = self.ensure(:GLib)
     mod.module_eval do
-      f = add_function "#{ffi_lib}",:g_spawn_command_line_sync, [:string,{:out=>:string},{:out=>:string},{:out=>:int},{:allow_null=>:error}], :bool,[-1,1,2,3]
-      class << self;self;end.define_method :spawn_command_line_sync do |s|
+      this = class << self;self;end
+      
+      f = add_function "#{ffi_lib}","g_spawn_command_line_sync", [:string,{:out=>:string},{:out=>:string},{:out=>:int},{:allow_null=>:error}], :bool,[-1,1,2,3]
+      
+      this.define_method :spawn_command_line_sync do |s|
         next f.invoke(s)
+      end
+      
+      f1 = add_function "#{ffi_lib}","g_file_set_contents", [:string,:string,:int,:error],:bool,[-1]
+      
+      this.define_method :file_set_contents do |n,s,i=-1|
+        next f1.invoke(n,s,i)
+      end
+      
+      f2 = add_function "#{ffi_lib}","g_file_get_contents", [:string,{:out=>:string},{:out=>:int},:error],:bool,[-1]
+      
+      this.define_method :file_get_contents do |*o|
+        next f2.invoke(*o)
       end
     end
     return mod
@@ -1624,7 +1650,7 @@ end
 module GObjectIntrospection
   module Lib
     extend FFI::Library
-    ffi_lib "libgirepository-1.0.so"
+    ffi_lib "libgirepository-1.0.so.1"
 
     # IRepository
     enum :IRepositoryLoadFlags, [:LAZY, (1 << 0)]
