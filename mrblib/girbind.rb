@@ -478,12 +478,13 @@ class FFIBind::ArgumentInfo < Hash
               v = CFunc::Pointer.new
             else
               # append SInt8[v.length-1] of v.bytes
-              cstr = CFunc::SInt8[v.length-1]
+              cstr = CFunc::SInt8[v.length]
               c = 0
               v.each_byte do |b|
                 cstr[c].value = b
                 c += 1
               end
+              cstr[c].value = 0
               v = cstr
             end
             ary[i].value = v  

@@ -20,4 +20,4 @@ end
 
 w.show_all
 
-#Gtk.main
+Gtk.main
