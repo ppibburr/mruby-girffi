@@ -8,7 +8,7 @@
 
 GirBind.bind(:Gtk)
 
-Gtk.init ARGV.length+1,["GirBind"].push(*ARGV)
+Gtk.init ARGV.length,["GirBind"].push(*ARGV)
 
 w=Gtk::Window.new(:toplevel)
 
@@ -20,4 +20,4 @@ end
 
 w.show_all
 
-Gtk.main
+#Gtk.main
