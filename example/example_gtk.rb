@@ -1,3 +1,11 @@
+# example_gtk.rb
+#
+# ppibbur tulnor33@gmail.com
+#
+# A minimal Gtk application 
+#
+# LICENSE: likely that of mruby
+
 GirBind.bind(:Gtk)
 
 Gtk.init ARGV.length+1,["GirBind"].push(*ARGV)

@@ -1,3 +1,13 @@
+# example_webkit.rb
+#
+# ppibbur tulnor33@gmail.com
+#
+# An enhanced Gtk application that
+# Demonstrates a simple web browser
+# with WebView signals and WebFrame access
+#
+# LICENSE: likely that of mruby
+
 GirBind.bind(:WebKit)
 
 Gtk.init ARGV.length+1,["GirBind"].push(*ARGV)
