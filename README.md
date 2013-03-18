@@ -2,6 +2,7 @@ mruby-girffi
 ============
 Library for mruby that provides means to dynamically wrap c libraries.  
 Mainly GLib based libraries, but exposes idioms suited to other c libraries as well.  
+see: https://github.com/ppibburr/mruby-girffi/wiki/Overview-of-the-internals for example of extended usage
 
 Setup
 ===
