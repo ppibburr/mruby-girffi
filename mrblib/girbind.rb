@@ -1,4 +1,13 @@
 # -File- ./ffi.rb
+class Proc
+  REF_A = []
+  def to_closure(signature)
+    signature ||= [CFunc::Void,[CFunc::Pointer]]
+    Proc::REF_A << cc=CFunc::Closure.new(*signature,&self)
+
+    return cc
+  end
+end
 
 module FFI
  C_NUMERICS = [CFunc::Int,
@@ -50,10 +59,15 @@ module CFunc
       @funcs = {}
       @@instances[where] = self
       @libname=where
-
-
-
       @dlh = CFunc[:dlopen].call(@libname,CFunc::Int.new(1))
+    end
+
+    DEBUG = {}
+
+    def self.debug *names
+      names.each do |n|
+        self::DEBUG[n] = true
+      end
     end
 
     def call rt,name,*args
@@ -65,7 +79,19 @@ module CFunc
         @funcs[name] = f
       end
       
-      f.arguments_type = args.map do |a| a.class end      
+      f.arguments_type = args.map do |a| a.class end   
+      
+      if self.class::DEBUG[name]
+        puts "DEBUG: CFunc::Library.call"
+        puts "library:     #{@libname}"
+        puts "function:    #{name}"
+        puts "return type: #{f.result_type}"
+        puts "arguments:"
+        f.arguments_type.each do |a|
+          puts "  #{a}"
+        end
+      end      
+         
       return f.call *args
     end
     
@@ -84,172 +110,12 @@ module CFunc
 end
 
 
-module FFI; 
-  class FFI::Closure < CFunc::Closure
-    CLOSURES = {}
-  
-    def initialize *o,&b
-      @block = b
-      super *o do |*a|
-        @block.call(*a)
-      end
-    end
-    
-    def set_closure b
-      @block = b
-    end
-    
-    def self.add name,rt,at,&b
-      return FFI::Closure::CLOSURES[name] ||= FFI::Closure.new(rt,at,&b)
-    end
-  end
-  
-  class DefaultClosure < FFI::Closure
-    def initialize &b
-      super CFunc::Void,[],&b
-    end
-  end
-end
-
-
-class FFI::Pointer < CFunc::Pointer  
-  def write_array_of type,a
-    ca = CFunc::CArray(TYPES[type]).refer(self.addr)
-
-    a.each_with_index do |q,i|
-      ca[i].value = q
-    end
-    return self
-  end
-  
-  def read_void
-    nil
-  end
-  
-  def read_array_of type,len
-    ca = CFunc::CArray(TYPES[type]).refer(self.addr)
-
-    for i in 0..len-1
-      yield type == :pointer ? FFI::Pointer.refer(ca[i].value.addr) : ca[i].value
-    end
-  end
-  
-  def write_array_of_string sa
-    ca = CFunc::CArray(CFunc::Pointer).refer(self.addr)
-    subt = 0
-    
-    sa.each_with_index do |q,i|
-      ia = CFunc::SInt8[q.length]
-      c = 0
-      
-      q.each_byte do |b|
-        ia[c].value = b
-        c += 1
-      end
-      
-      ia[c].value = 0
-      ca[i].value = ia
-    end
-    return self
-  end
-  
-  def read_array_of_string len
-    read_array_of :pointer,len do |y|
-      yield CFunc::CArray(CFunc::SInt8).refer(y.addr).to_s
-    end
-  end
-  
-  def get_pointer offset
-    FFI::Pointer.refer(self[offset].addr)
-  end
-  
-  def read_string
-    value.to_s
-  end
-  
-  def write_string s
-    ca = CFunc::CArray(CFunc::SInt8).refer(self.addr)
-    c = 0
-    
-    s.each_byte do |b|
-      ca[c].value = b
-      c += 1
-    end
-    
-   # ca[c].value = 0
-    return self
-  end
-  
-  def read_type type
-    return TYPES[type].get(self.addr)
-  end
-  
-  def write_type n,type
-    TYPES[type].refer(self.addr).value = n
-    return self
-  end
-  
-  FFI::TYPES.keys.each do |k|
-    unless k == :string or k == :array
-      define_method :"read_#{k}" do
-        next read_type k
-      end
-
-      define_method :"write_#{k}" do |v|
-        next write_type v,k
-      end
-      define_method :"write_array_of_#{k}" do |v|
-        next write_array_of k,v
-      end  
-      define_method :"read_array_of_#{k}" do |v,&b|
-        read_array_of(k,v) do |q|
-          b.call q 
-        end 
-        next nil
-      end            
-    end
-  end
-  
-  def read_bool
-    return read_int == 1
-  end
-  
-  def read_array_of_bool len
-    read_array_of_int len do |i|
-      yield i == 1
-    end
-    return nil
-  end
-end
-  
-class FFI::MemoryPointer < FFI::Pointer
-  def self.new *o
-    count = 1
-    clear = false
-    
-    if o.length == 1
-      size = o[0]
-      return ins
-    elsif o.length == 2
-      size, count = o
-    elsif o.length == 3
-      size,count,clear = o
-    else
-      raise "arguments error > 4 for 1..3"
-    end
-    
-    s = TYPES[size].size
-    ins = malloc(s*count)
-
-    return ins
-  end  
-end
-
 module FFI
   class Struct < CFunc::Struct
     def self.is_struct?
       true
     end
+    
     def self.every(a,i)
       b=[]
       q=a.clone
@@ -271,6 +137,7 @@ module FFI
       define *every(o,2)
     end
   end
+  
   class Union < Struct
   end  
   
@@ -317,35 +184,36 @@ module FFI::Library
   def self.callbacks
     return @@callbacks
   end
-  
-
-  
+ 
   def typedef *o
     return FFI::TYPES[o[1]] = q=FFI.find_type(o[0])
   end  
   
-    @@enums = {}
-    def enum t,a
-      if a.find() do |q| q.is_a?(Integer) end
-        b = []
+  @@enums = {}
+  def enum t,a
+    if a.find() do |q| q.is_a?(Integer) end
+      b = []
  
-        for i in 0..((a.length/2)-1)
-          val= a[i*2] 
-          idx = a[(i*2)+1]
-          b[idx] = val
-        end
-
-        a=b
+      for i in 0..((a.length/2)-1)
+        val= a[i*2] 
+        idx = a[(i*2)+1]
+        b[idx] = val
       end
-      @@enums[t] = a
-      typedef :int,t
-      return self
-    end
 
-    def self.enums
-      r=@@enums
-      return r
-    end  
+      a=b
+    end
+   
+    @@enums[t] = a
+  
+    typedef :int,t
+  
+    return self
+  end
+
+  def self.enums
+    r=@@enums
+    return r
+  end  
   
   def attach_function name,at,rt
     f=add_function ffi_lib,name,at,rt
@@ -355,6 +223,7 @@ module FFI::Library
         next f.invoke *o,&b
       end
     end
+  
     return self
   end
 end
@@ -371,11 +240,25 @@ class Symbol
   end
 end
 
-# -File- ./argument.rb
-module FFIType2CFuncType
-  # Returns a Class of CFunc namespace types
-  def ffi_type
-    case type
+module TypeConversion
+  module Utility
+    def self.wrap_pointer ptr,q
+      hash = q.send(q.type)
+      ns = hash[:namespace]
+      name = hash[:name]
+      klass = ::Object.const_get(ns).const_get(name)
+      return klass.wrap(ptr)  
+    end  
+  end
+
+  def get_c_type
+    t = type
+    
+    if t == :enum
+      t = :int    
+    end
+    
+    case t
     when :object
       CFunc::Pointer
     when :struct
@@ -383,64 +266,11 @@ module FFIType2CFuncType
     when :union
       CFunc::Pointer
     when :array
-      CFunc::CArray(array.ffi_type)
+      CFunc::CArray(array.get_c_type)
+    when :callback
+      CFunc::Closure
     else
-      FFI::TYPES[type] || CFunc::Pointer
-    end
-  end
-end
-
-# Represents Argument/Return array member
-# specifies properties of the array
-class ArrayStruct < Struct.new(:length,:fixed_size,:type,:enum,:zero_terminated)
-end
-
-
-class ClosureStruct < Struct.new(:return_type,:arguments)
-end
-
-module Cvalue2RubyValue
-  # Converts a C value to Ruby from information of a (Argument || Return)
-  def to_ruby ptr,len=nil
-    if array
-      if !len
-        len = array.length
-      end
-     
-      if len < 0
-        len = array.fixed_size
-      end    
-     
-      a = []
-      tt = type == :array ? array.type : type
-      #if !array.zero_terminated
-  	    if tt == :enum
-		  ptr.send :"read_array_of_#{:int}",len do |q|
-		    a << q
-		  end
-		  return a
-	    else
-		  ptr.send :"read_array_of_#{tt}",len do |q|
-		    a << q
-		  end
-		  return a
-	    end
-      #else
-
-      #end
-    elsif type == :pointer
-      return ptr
-    elsif type == :enum
-      r = ptr.send :"read_int"
-      return r if r == -1
-      return enum.enum?[r]
-    elsif type == :object or type == :struct
-      ns = object[:namespace]
-      name = object[:name]
-      return ::Object.const_get(ns).const_get(name).wrap ptr
-    else 
-      tt = type
-      return ptr.send(:"read_#{tt}")  
+      FFI::TYPES[t] || CFunc::Pointer
     end
   end
   
@@ -457,110 +287,104 @@ module Cvalue2RubyValue
       r = r.map do |v| v.name.to_sym end
     end
     r.index(v)
+  end  
+  
+  def to_ruby(ptr)
+    if self.respond_to?(:direction) 
+      ptr = get_c_type.refer(ptr) if direction == :out or direction == :inout
+    end
+    i = FFI::C_NUMERICS.index(get_c_type)
+    if klass=FFI::C_NUMERICS[i] and i and !enum
+      q = nil
+      if ptr.is_a?(klass)
+        q = ptr.value
+      else
+        q = klass.get(ptr)
+      end
+      
+      if type == :bool
+        return q == 1
+      end
+      return q
+    else
+      if [:object,:union,:struct].index(type)
+        return Utility.wrap_pointer(ptr,self)
+      else
+        case type
+        when :enum
+          return enum.enum?[ptr.value]
+        when :string
+          return ptr.to_s
+        when :bool
+          return ptr
+        when :void
+          return nil
+        when :pointer
+          return ptr
+        when :array
+          a = []
+          
+          if len=array.fixed_size
+            ptr.size = len
+          end 
+          
+          if !array.zero_terminated
+            for i in 0..ptr.size-1
+              q = ptr[i].value
+              
+              a << array.to_ruby(q)
+            end
+          else
+            c = 0
+            bool = false
+            
+            until bool
+              q = ptr[c].value
+              bool = q.is_null?
+              
+              break if bool
+              
+              a << array.to_ruby(q)
+            end
+          end
+          return a
+        else
+          e("conversion of type: #{type} not implemented")
+        end
+      end
+    end
   end
-end 
+end
+
+# Represents Argument/Return array member
+# specifies properties of the array
+class ArrayStruct < Struct.new(:length,:fixed_size,:type,:enum,:zero_terminated)
+  include TypeConversion
+end
+
+
+class ClosureStruct < Struct.new(:return_type,:arguments)
+end
 
 # Represents Argument information
 # and defines ways to create and convert
 # Arguments to/from c
-class Argument < Struct.new(:object,:type,:struct,:array,:direction,:allow_null,:callback,:closure,:destroy,:value,:index,:enum)
-  # Sets value from an argument passed to Function#invoke
-  def set v
-    self[:value] = v
+class Argument
+  attr_accessor(:object,:type,:struct,:array,:direction,:allow_null,:callback,:closure,:destroy,:value,:index,:enum) 
+  def [] k
+    @k
   end
   
-  include FFIType2CFuncType
-  
-  # Resolve and create the appropiate 
-  # pointer from Argument properties for Function#invoke
-  def make_pointer mul = 1
-    if type == :callback
-      if value.is_a?(CFunc::Closure)
-        return value
-      elsif cb=FFI::Library.callbacks[callback]
-        return CFunc::Closure.new(cb[1],cb[0],&value)
-      end
-    elsif array
-      ptr = CFunc::Pointer.malloc(4)
-      return FFI::MemoryPointer.refer(ptr)
-    else
-      tt = FFI::TYPES[type] ? type : :pointer
-      
-       q=FFI::MemoryPointer.new(tt,mul)
-      return q#FFI::MemoryPointer.new(tt,mul)
-    end
+  def []= k,v
+    send "#{k}=",v
   end
   
-  include Cvalue2RubyValue
-  NA = []
-  # Sets the appropiate value for an Argument for Function#invoke
-  def for_invoke
-    if type == :string and direction == :in
-      if q=value
-        q=value
-      else
-        return $mruby_cfunc_null_pointer
-      end 
-      return q
-    end
-    
-    if type == :pointer
-      if value.is_a?(CFunc::Pointer)
-        return value
-      end
-    elsif type == :object
-        return value
-    end
-    
-    ptr = make_pointer
-
-    if type == :callback
-      ptr.set_closure value if ptr.respond_to?(:set_closure)
-      NA << ptr
-      return ptr
-    end
-    
-    tt = type
-    
-    tt = (tt == :enum ? :int : tt)
-    
-    if value;
-      q = value
-      if type == :enum
-        if value.is_a?(Symbol)
-          q = get_enum(value)
-        end
-      end
-      
-      if type == :pointer
-        unless q.is_a?(CFunc::Pointer)
-          if q == 0
-            q = CFunc::Int.new(0)
-          end
-        end
-      end
-
-      if array
-        tt = array.type
-        meth = :"write_array_of_#{tt}"
-      else
-        meth = :"write_#{tt}"
-      end
-
-      ptr.send meth,q unless direction == :out
-
-    elsif allow_null or omit?
-      ptr.write_int 0 unless direction == :out
-    end
- 
-    return ptr
-  end
- 
+  include TypeConversion
   # Returns true if the argument may be omitted from invoke arguments
   # The argument will be automatically resolved to nil
   # Callbacks are resolved to passed block of Function#invoke or nil
   def omit?
-    (type == :destroy) || (type == :error) || (type == :callback) || (type == :data) || (direction == :out)
+    (type == :destroy) || (type == :error) || (type == :data) || (direction == :out)
   end
   
   # Returns  true if the argument is allowed to be null
@@ -568,50 +392,96 @@ class Argument < Struct.new(:object,:type,:struct,:array,:direction,:allow_null,
   def optional?
     allow_null
   end
+  
+  def make_pointer(value)
+    if i=[false,true].index(value)
+      value = i
+    end
+  
+    klass = get_c_type
+    
+    ptr = nil
+    
+    if direction != :out
+      if array
+        len = value.length
+        ary = klass.new(len)
+        
+        value.each_with_index do |v,i|
+          if array.enum and v.is_a?(Symbol)
+            v = array.get_enum(v)
+          end
+          
+          if array.type == :string
+            if !v
+              v = CFunc::Pointer.new
+            else
+              cstr = CFunc::SInt8[v.length-1]
+              c = 0
+              v.each_byte do |b|
+                cstr[c].value = b
+                c += 1
+              end
+              v = cstr
+            end
+            ary[i].value = v  
+          else
+            ary[i].value = klass.new(v)
+          end
+        end
+        
+        ptr = ary
+      else
+        v = value
+        
+        if type == :callback
+          if v.is_a?(CFunc::Closure)
+            ptr = v
+          else
+            signature = FFI::Library.callbacks[callback]
+            ptr = v.to_closure(signature.reverse)
+          end
+        else
+          if enum
+            if v.is_a?(Symbol)
+              v = get_enum(v)
+            end
+          end
+          
+          if type == :string
+            ptr = CFunc::Pointer.new
+            ptr = v if v
+          else
+            if v
+              ptr =  klass.new(v)
+            else
+              ptr = klass.new
+            end
+          end
+        end
+      end
+    elsif direction == :out
+      return klass.new().addr
+    end
+    
+    case direction
+    when :inout
+      return ptr.addr
+    else
+      return ptr
+    end
+  end  
 end
 
 
 # Represents information of a return_value of Function#invoke
 class Return < Struct.new(:object,:type,:struct,:array,:enum)
-  include FFIType2CFuncType
-  
-  def get_c_type
-    if type == :enum
-      CFunc::Int
-    elsif type == :object
-      CFunc::Pointer
-    else
-      FFI::TYPES[type]
-    end
-  end
-  
-  include Cvalue2RubyValue
-  
-  # returns a Ruby value of the passes ptr
-  # resolved from Return properties
-  def to_ruby ptr,len=1
-    if FFI::C_NUMERICS.index(ptr.class)
-      if type == :bool
-        ptr.value == 1
-      else
-        n = ptr.value
-  
-        if type == :enum
-          return enum.enum?[n]
-        end
-  
-        return n
-      end
-    else
-      ptr = FFI::Pointer.refer(ptr.addr)
-      q=super ptr,len
-      return q
-    end
-  end
+  include TypeConversion
 end
 
 # -File- ./function.rb
 class Function
+  DEBUG = {}
   attr_reader :return_type
 
   def initialize where,name,args,return_type,results=[-1]
@@ -620,6 +490,12 @@ class Function
     @name = name
     @return_type = return_type
     @results = results
+  end
+
+  def self.debug *names
+    names.each do |n|
+      self::DEBUG[n] = true
+    end
   end
   
   def set_closure closure
@@ -657,7 +533,7 @@ class Function
 
   def get_required
     a=arguments.find_all do |a|
-      !a.omit? and !a.optional?
+      !a.omit? and !a.optional? and !(a.type == :callback)
     end
     
     oidxa = a.map do |o|
@@ -696,7 +572,6 @@ class Function
   NA = []
   attr_reader :arguments
   def invoke *args,&b
-
     have = args.length
     required = len=get_required.length
     max = len+get_optionals.length
@@ -718,78 +593,45 @@ class Function
     raise "Too few arguments. #{have} for #{required}..#{max}" if have < required
     raise "Too many arguments. #{have} for #{required}..#{max}" if have > max
 
+    #Function.debug @name
+    invoked = []
 
     rargs.each_with_index do |i,ri|
-      arguments[i].set args[ri]
+      invoked[i] = arguments[i].make_pointer(args[ri])
     end
-    
+
     get_optionals.find_all do |i|
       !rargs.index(i)
     end.each do |i|
-      arguments[i].set nil
+      invoked[i] = arguments[i].make_pointer(nil)
     end
     
     get_omits.each do |i|
-      arguments[i].set nil
+      invoked[i] = arguments[i].make_pointer(nil)
     end
     
     if cb=arguments.find do |a|
-        a.callback
+        a.type == :callback
       end
-      closure = b || @closure
-      NA << closure
-      cb.set closure
+      
+      i = arguments.index(cb)
+      invoked[i] = cb.make_pointer(b || @closure)
     end
+
+    pp() and p(invoked) if Function::DEBUG[@name]
     
-    invoked = []
-
-    pointers = arguments.map do |a|
-      ptr = a.for_invoke
-      if a.direction != :in
-        invoked << ptr.addr
-      else
-        invoked << ptr
-      end
-      ptr
-    end
-
     # call the function
     r = CFunc::libcall2(get_return_type,@where,@name.to_s,*invoked)
 
-    if cb=arguments.find do |a|
-        a.callback
-      end
-
-      cb.set nil
-    end
-    
-    len = 1
-    
-    if ary = @return_type.array
-      len = ary.fixed_size
-    end
-
     # get the proper ruby value of return
-    result = (@return_type.type == :void ? nil : @return_type.to_ruby(r,len))
-
-    arguments.each do |a|
-      a[:value] = nil
-    end
+    result = (@return_type.type == :void ? nil : @return_type.to_ruby(r))
 
     if @results == [-1]
-
       # default is to return array of out pointers and return value
       ra = get_args_to_return().map do |a|
-        ptr = pointers[a.index]
-
-        len = 1
-        
-        if ary = a.array
-          
-          len = ary.fixed_size
-        end
-        
-        a.to_ruby(ptr,len)
+        ptr = invoked[a.index]
+    
+        a.to_ruby(ptr)
       end 
            
       r=[result].push *ra
@@ -816,14 +658,19 @@ class Function
         !n.index(a)
       end.each do |a|
         i=arguments.index(a)
-        qq[i] = a.to_ruby(pointers[i]) if @results.index(i)
+        qq[i] = a.to_ruby(invoked[i]) if @results.index(i)
       end
       
       ala.each do |q|
-        qq[q[0]] = arguments[q[0]].to_ruby pointers[q[0]],qq[q[1]]
+        len = qq[q[1]]
+        arg = arguments[q[0]]
+        ptr = invoked[q[0]]
+        ptr.size = len
+        qq[q[0]] = arg.to_ruby(ptr)
       end
       
       a = []
+      
       @results.each do |i|
         if i == -1
           a << result
@@ -835,7 +682,7 @@ class Function
           end
         end
       end
-      a
+      
       case a.length
       when 0
         return nil
@@ -932,6 +779,7 @@ def add_function where,name,at,rt,ret=[-1]
       arg[:enum] = type
       type = :enum
     end
+   
     arg[:type] = type    
     arg[:direction] = direction
     arg[:allow_null] = allow_null
@@ -948,8 +796,8 @@ def add_function where,name,at,rt,ret=[-1]
   while rt.is_a? Hash
     case rt.keys[0]
     when :struct
-      rett[:struct] = rt[rt.keys[0]]
-      rett[:type] = :struct
+      rett[:object] = rt[rt.keys[0]]
+      rett[:type] = :object
       rt = nil
     when :object
       rett[:object] = rt[rt.keys[0]]
@@ -989,16 +837,6 @@ def get_arg arg,allow_cb=true
   
   get_type_info(a,s)
   
-  if s[:closure] > -1
-    if !FFI::Library.callbacks[s[:callback]]
-      cb = get_callable(a.interface,false)
-
-      o=Object.new
-      o.extend FFI::Library
-      o.callback(s[:callback],cb[0].map do |w| w.type end,cb[1].type)
-    end
-  end
-  
   return s
 end
 
@@ -1018,6 +856,8 @@ def get_callable info,bool=true
   
     args[q.closure][:type]=:data
     args[q.destroy][:type]=:destroy
+    args[q.closure][:allow_null]=true
+    args[q.destroy][:allow_null]=true  
   end
 
   get_type_info info.return_type,r=Return.new
@@ -1029,26 +869,36 @@ GA = []
 N = []
 def get_type_info(type_info,s)
   a=type_info
-  N << s
   
-  s[:type] = a.tag
+  s[:type] = GirBind.find_type(a.tag)
 
   if a.interface
-    s[:type] = a.interface_type
-    
-    if s[:type] == :object
+    t = s[:type] = GirBind.find_type(a.interface_type)
+    if s[:type] == :struct
+      s[:type] = :object
+    end
+
+
+    if t == :object
       s[:object] = {:namespace=>a.interface.namespace,:name=>a.interface.name}
-    elsif s[:type] == :struct
-      s[:struct] = {:namespace=>a.interface.namespace,:name=>a.interface.name}
-    elsif s[:type] == :callback
-      s[:callback] = :"#{a.interface.namespace}#{a.interface.name}"
-    elsif s[:type] == :enum
-      s[:enum] = :"#{a.interface.namespace}#{a.interface.name}"
-      unless FFI::Library.enums[s[:enum]]
+    elsif t == :callback
+      n = s[:callback] = :"#{a.interface.namespace}#{a.interface.name}"
+
+      if !FFI::Library.callbacks[n]
+        cb = get_callable(a.interface,false)
+
+        o=Object.new
+        o.extend FFI::Library
+
+        o.callback(n,cb[0].map do |w| w.type end,cb[1].type) 
+      end
+    elsif t == :enum
+      e = s[:enum] = :"#{a.interface.namespace}#{a.interface.name}"
+      unless FFI::Library.enums[e]
         o = Object.new
         o.extend FFI::Library
         ea=a.interface.get_values
-        o.enum s[:enum],ea
+        o.enum e,ea
       end
     end
   end
@@ -1064,9 +914,6 @@ def get_type_info(type_info,s)
     s[:array] = as
     s[:type] = :array
   end  
-  
-  tt = GirBind.find_type(s[:type]) 
-  s[:type] = tt ? tt : s[:type]
   
   return s
 end
@@ -1130,7 +977,7 @@ module GirBind
       }
       
   def self.find_type t
-    return GB_TYPES[t] || t
+    return(GB_TYPES[t] || t)
   end    
 end
 
@@ -1310,7 +1157,7 @@ module GirBind
           sa = Argument.new
           
           sa[:type]=:object
-          sa[:object] = {:namspace=>:"#{@ns}",:name=>klass.name}
+          sa[:object] = {:namspace=>:"#{ns}",:name=>klass.name}
           sa[:index]=0
           sa[:direction] = :in
           
@@ -1321,6 +1168,7 @@ module GirBind
           sargs = [sa].push(*args)
 
           klazz.bound_functions[m.symbol] = f = Function.new(ns.ffi_lib,m.symbol,sargs,rt,[-1])
+          
         end
         q = f.invoke self,*o,&b   
           
@@ -1356,7 +1204,8 @@ module GirBind
 	  
 		      if m.constructor?
 		        f.return_type[:object] = {:namespace=>:"#{@ns.name}",:name=>:"#{@klass.name}"}
-		      end
+		        
+          end
         else
          
 	      end
@@ -1377,10 +1226,7 @@ module GirBind
   module Builder
     include FFI::Library
     def load_class c,&b
-      if ::Object.const_get(c) == self.const_get(c)
-        setup_class(c)
-      end
-      klass = self.const_get(c)
+      klass = setup_class(c)
       klass.class_eval &b
       klass
     end
@@ -1488,18 +1334,15 @@ module GirBind
 
   NSH={}
 
-  def self.bind ns,deps=[]
+  def self.bind ns,ver=nil,deps=[]
     return NSH[ns] if NSH[ns]
-
 
     q = ns.to_s
 
     unless deps.index(q)
-    
       q = "cairo" if q == "Cairo"
-      n = nil
-      n = "2.0" if q == "Gtk"
-      gir.require(q,n)
+
+      gir.require(q,ver)
 
       da = []
 
@@ -1507,11 +1350,11 @@ module GirBind
         n,v = d.split("-")
 
         n = "Cairo" if n == "cairo"
-        n
+        [n,v]
       end
 
-      da.each do |d|
-        bind(d.to_sym,da) unless deps.index(d)
+      da.each do |d,v|
+        bind(d.to_sym,v,da.map do |a| a[0] end) unless deps.index(d)
       end
     end
     
@@ -1559,20 +1402,19 @@ module GirBind
     mod.module_eval do
       self::Lib.callback :GObjectCallback,[],:void
       
-      N=[]
-      
       load_class :Object do
         @@signal_connect_func = add_function GObject::Lib.ffi_lib,"g_signal_connect_data",[:pointer,:string,{:callback=>:GObjectCallback},{:allow_null=>:data},{:allow_null=>:destroy},{:allow_null=>:int}],:int
         
         def signal_connect n,&b
           args,rt = self.class.get_signal_signature(n)
+  
           cb = GirBind::WrapHelp.convert_params_closure(b,args)
-
+  
           cargs = args.map do |a|
-            a.ffi_type
+            a.get_c_type
           end
 
-          N << [b,cb,@@signal_connect_func.set_closure(CFunc::Closure.new(rt.ffi_type,cargs, &cb))]
+          @@signal_connect_func.set_closure(cb.to_closure([rt.get_c_type,cargs]))
 
           @@signal_connect_func.invoke(self,n)
         end
@@ -1602,6 +1444,24 @@ module GirBind
       this.define_method :file_get_contents do |*o|
         next f2.invoke(*o)
       end
+      
+      load_class :List do
+        o = Object.new
+        o.extend FFI::Library
+        o.callback :GLibGFunc,[:pointer,:pointer],:void
+
+        this=class << self;self;end
+
+        f3 = add_function @ns.ffi_lib,"g_list_next",[:pointer],:bool,[-1]
+        define_method :next do
+          self.class.wrap(f3.invoke(self))
+        end
+        
+        f4 = add_function @ns.ffi_lib,"g_list_foreach",[:pointer,{:callback=>:GLibGFunc},:data],:pointer,[-1]
+        define_method :foreach do |*o,&b|
+          f4.invoke(self,*o,&b)
+        end  
+      end      
     end
     return mod
   end
@@ -1632,16 +1492,18 @@ module GLib
 
     def to_a
       a = []
-      c = 0
-      ca=CFunc::CArray(CFunc::Pointer).refer(@ptr.addr)
-      n=nil
-      while !n
-        q=ca[c]
-        break if q.is_null?
+      ca = CFunc::CArray(CFunc::Pointer).refer(@ptr.addr)
+      c = 0 
+      go = nil
+      
+      while !go
+        q = ca[c].value
+        go = q.is_null? 
+        break if go
+        c+=1
         a << q.to_s
-        c += 1
       end
-
+      
       a
     end
   end
@@ -1676,6 +1538,10 @@ module GObjectIntrospection
     [:pointer, :string], :string
   self::Lib.attach_function :g_irepository_get_c_prefix,
     [:pointer, :string], :string
+  self::Lib.attach_function :g_irepository_get_version,
+    [:pointer, :string], :string   
+  self::Lib.attach_function :g_irepository_enumerate_versions,
+    [:pointer, :string], :pointer       
 
   # IBaseInfo
   self::Lib.enum :IInfoType, [
@@ -2911,11 +2777,24 @@ module GObjectIntrospection
 
     def require namespace, version=nil, flags=0
       errpp = CFunc::Pointer.new
-      GObjectIntrospection::Lib.g_irepository_require @gobj, namespace, version, flags, errpp.addr
+      tl=GObjectIntrospection::Lib.g_irepository_require @gobj, namespace, version, flags, errpp.addr
 
      # p :RRRRRRRRRRRRRRRRRRREQQQQQQQQQQQQQQQQQQQQQRRRRRRRRRRRREEEEEEEEEEEEE
       #errp = errpp.to_s
       raise GError.new(errpp.to_s).message unless errpp.is_null?
+      return tl
+    end
+    
+    def enumerate_versions str
+      a=[]
+      GLib::List.wrap(GObjectIntrospection::Lib.g_irepository_enumerate_versions(@gobj,str)).foreach do |q|
+        a << q.to_s
+      end
+      return a
+    end
+   
+    def get_version str
+      GObjectIntrospection::Lib.g_irepository_get_version(@gobj,str)
     end
 
     def n_infos namespace
@@ -2975,16 +2854,14 @@ module GObjectIntrospection
     end
 
     def self.wrap_ibaseinfo_pointer ptr
-      return nil if ptr.is_null?
+      return nil if ptr.is_null? or !ptr
    
       type = GObjectIntrospection::Lib.g_base_info_get_type(ptr)
-     
+      
       klass = TYPEMAP[type]
-       klass= klass.wrap(ptr)
+      klass= klass.wrap(ptr)
       klass
     end
-
-
 
     def wrap ptr
       IRepository.wrap_ibaseinfo_pointer ptr

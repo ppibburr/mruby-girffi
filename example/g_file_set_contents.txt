@@ -1,0 +1,3 @@
+An example
+of GLib.file_set_contents
+foo
