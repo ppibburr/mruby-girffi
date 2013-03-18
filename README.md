@@ -57,7 +57,7 @@ w.show_all
 Gtk.main
 ```
 
-See https://github.com/ppibburr/mruby-girffi/example for more.
+See https://github.com/ppibburr/mruby-girffi/tree/master/example for more.
 
 Requirements
 ===
