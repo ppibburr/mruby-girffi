@@ -10,6 +10,7 @@
 
 GirBind.bind(:WebKit)
 
+
 Gtk.init ARGV.length+1,["GirBind"].push(*ARGV)
 
 w=Gtk::Window.new(:toplevel)

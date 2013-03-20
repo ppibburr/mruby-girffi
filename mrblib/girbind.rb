@@ -1489,12 +1489,17 @@ module GirBind
 
       da = []
 
-      da = gir.dependencies(q).map do |d|
+      da = []
+      gir.dependencies(q).each do |d|
         n,v = d.split("-")
 
+        next if n == "JSCore"
+        
         n = "Cairo" if n == "cairo"
-        [n,v]
+        da << [n,v]
       end
+
+      da
 
       da.each do |d,v|
         bind(d.to_sym,v,da.map do |a| a[0] end) unless deps.index(d)
@@ -1607,12 +1612,12 @@ module GirBind
 
         this=class << self;self;end
 
-        f3 = FFIBind::Function.add_function @ns.ffi_lib,"g_list_next",[:pointer],:bool,[-1]
+        f3 = FFIBind::Function.add_function t="/usr/lib/i386-linux-gnu/libglib-2.0.so.0","g_list_next",[:pointer],:bool,[-1]
         define_method :next do
           self.class.wrap(f3.invoke(self))
         end
         
-        f4 = FFIBind::Function.add_function @ns.ffi_lib,"g_list_foreach",[:pointer,{:callback=>:GLibGFunc},:data],:pointer,[-1]
+        f4 = FFIBind::Function.add_function t,"g_list_foreach",[:pointer,{:callback=>:GLibGFunc},:data],:pointer,[-1]
         define_method :foreach do |*o,&b|
           f4.invoke(self,*o,&b)
         end  
@@ -1999,7 +2004,7 @@ module GObjectIntrospection
     end
 
     def initialize ptr
-      @struct = self.class::Struct.new(ptr)
+      @struct = self.class::Struct.new(ptr.addr)
     end
 
     def message
@@ -2875,9 +2880,10 @@ module GObjectIntrospection
 
     def require namespace, version=nil, flags=0
       errpp = CFunc::Pointer.new
+
       tl=GObjectIntrospection::Lib.g_irepository_require @gobj, namespace, version, flags, errpp.addr
 
-      raise GError.new(errpp.to_s).message unless errpp.is_null?
+      raise GError.new(errpp).message.to_s unless errpp.is_null?
       return tl
     end
     
@@ -2955,7 +2961,4 @@ module GObjectIntrospection
     end
   end
 end
-
-
-
 

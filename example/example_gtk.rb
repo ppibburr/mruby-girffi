@@ -6,7 +6,7 @@
 #
 # LICENSE: likely that of mruby
 
-GirBind.bind(:Gtk)
+GirBind.bind(:Gtk,'2.0')
 
 Gtk.init ARGV.length,["GirBind"].push(*ARGV)
 
