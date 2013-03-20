@@ -12,7 +12,7 @@ Some examples of libraries that can be immediately bound are:
 * WebKit (both 1.x and 3.x)
 
 Examples of bindings that utilzie mruby-girffi internals to provide access to a non-GLib based library  
-* [mruby-javascriptcore](https://github.com/ppibburr/mruby-javascriptcore)
+* [mruby-javascriptcore](https://github.com/ppibburr/mruby-javascriptcore) (Provides binding to and from JavaScript in WebKitGTK)
 
 Setup
 ===
