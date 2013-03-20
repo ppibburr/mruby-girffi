@@ -110,7 +110,7 @@ module FFIBind::TypeConversion
           end
           return a
         else
-          e("conversion of type: #{type} not implemented")
+          return ptr
         end
       end
     end

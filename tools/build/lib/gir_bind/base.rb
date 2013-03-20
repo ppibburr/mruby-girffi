@@ -2,36 +2,7 @@
 #
 
 module GirBind  
-  class Base
-    def initialize *o,&b
-      @ptr = get_constructor.call(*o,&b) 
-    end
-    
-    def to_ptr
-      @ptr
-    end
-  
-    def get_constructor
-      return @constructor
-    end
-    
-    def set_constructor &b
-      @constructor = b
-      return true
-    end
-    
-    def self.wrap ptr
-      ins = allocate()
-      
-      ins.set_constructor do |ptr|
-        next(ptr)
-      end
-      
-      ins.send :initialize,ptr
-      
-      return ins 
-    end    
-    
+  class Base < FFIBind::ObjectBase
     def self.init ns,klass
       self.const_set :BOUND,{}
       def self.gir_info

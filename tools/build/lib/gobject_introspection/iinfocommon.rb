@@ -47,7 +47,7 @@ module GObjectIntrospection
     end
 
     def initialize ptr
-      @struct = self.class::Struct.new(ptr)
+      @struct = self.class::Struct.new(ptr.addr)
     end
 
     def message

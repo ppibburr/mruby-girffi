@@ -6,7 +6,7 @@
 ./ext/symbol.rb
 ./ext/proc.rb
 ./ext/cfunc_library.rb
-./ffi_bind/ffi_bind.rb
+./ffi_bind/object_base.rb
 ./ffi_bind/type_converion.rb
 ./ffi_bind/array_info.rb
 ./ffi_bind/argument_info.rb

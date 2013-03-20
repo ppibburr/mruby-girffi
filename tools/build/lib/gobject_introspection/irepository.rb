@@ -53,9 +53,10 @@ module GObjectIntrospection
 
     def require namespace, version=nil, flags=0
       errpp = CFunc::Pointer.new
+
       tl=GObjectIntrospection::Lib.g_irepository_require @gobj, namespace, version, flags, errpp.addr
 
-      raise GError.new(errpp.to_s).message unless errpp.is_null?
+      raise GError.new(errpp).message.to_s unless errpp.is_null?
       return tl
     end
     

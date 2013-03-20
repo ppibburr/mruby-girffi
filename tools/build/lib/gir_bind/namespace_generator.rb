@@ -14,12 +14,17 @@ module GirBind
 
       da = []
 
-      da = gir.dependencies(q).map do |d|
+      da = []
+      gir.dependencies(q).each do |d|
         n,v = d.split("-")
 
+        next if n == "JSCore"
+        
         n = "Cairo" if n == "cairo"
-        [n,v]
+        da << [n,v]
       end
+
+      da
 
       da.each do |d,v|
         bind(d.to_sym,v,da.map do |a| a[0] end) unless deps.index(d)

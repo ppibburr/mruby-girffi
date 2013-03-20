@@ -103,6 +103,14 @@ class FFIBind::Function
     return map
   end
 
+  def invoked= v
+    @invoked = v
+  end
+  
+  def invoked
+    @invoked
+  end
+
   attr_reader :arguments
 
   # calls a function with arguments inflated and converted to c
@@ -132,7 +140,7 @@ class FFIBind::Function
     raise "Too many arguments. #{have} for #{required}..#{max}" if have > max
 
     #Function.debug @name
-    invoked = []
+    self.invoked = []
 
     rargs.each_with_index do |i,ri|
       invoked[i] = arguments[i].make_pointer(args[ri])
