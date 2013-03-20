@@ -4,6 +4,16 @@ Library for mruby that provides means to dynamically wrap c libraries.
 Mainly GLib based libraries, but exposes idioms suited to other c libraries as well.  
 see: https://github.com/ppibburr/mruby-girffi/wiki/Overview-of-the-internals for example of extended usage
 
+Some examples of libraries that can be immediately bound are:  
+* GLib
+* GObject
+* Gtk (both 2.x and 3.x)
+* Soup
+* WebKit (both 1.x and 3.x)
+
+Examples of bindings that utilzie mruby-girffi internals to provide access to a non-GLib based library  
+* [mruby-javascriptcore](https://github.com/ppibburr/mruby-javascriptcore)
+
 Setup
 ===
 Ammend build_config.rb to similar

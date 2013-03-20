@@ -19,11 +19,11 @@ module FFI
     :self => :pointer,
     :int=>CFunc::Int,
     :uint=>CFunc::UInt32,
-    :bool=>CFunc::Int,
+    :bool=>CFunc::SInt8,
     :string=>CFunc::Pointer,
     :pointer=>CFunc::Pointer,
     :void=>CFunc::Void,
-    :double=>CFunc::Float,
+    :double=>CFunc::Double,
     :size_t=>CFunc::UInt32,
     :ulong=>CFunc::UInt64,
     :long=>CFunc::SInt64,
@@ -416,7 +416,7 @@ module FFIBind::TypeConversion
           end
           return a
         else
-          e("conversion of type: #{type} not implemented")
+          return ptr
         end
       end
     end
@@ -702,6 +702,14 @@ class FFIBind::Function
     return map
   end
 
+  def invoked= v
+    @invoked = v
+  end
+  
+  def invoked
+    @invoked
+  end
+
   attr_reader :arguments
 
   # calls a function with arguments inflated and converted to c
@@ -731,7 +739,7 @@ class FFIBind::Function
     raise "Too many arguments. #{have} for #{required}..#{max}" if have > max
 
     #Function.debug @name
-    invoked = []
+    self.invoked = []
 
     rargs.each_with_index do |i,ri|
       invoked[i] = arguments[i].make_pointer(args[ri])
@@ -2947,4 +2955,7 @@ module GObjectIntrospection
     end
   end
 end
+
+
+
 
