@@ -20,6 +20,11 @@ module CFunc
       end
     end
 
+    def get_symbol name,rt = CFunc::Pointer
+       @dlh ||= CFunc[:dlopen].call(@libname,CFunc::Int.new(1))  
+       return CFunc::call(rt,:dlsym,@dlh,name) 
+    end
+
     def call rt,name,*args
       @dlh ||= CFunc[:dlopen].call(@libname,CFunc::Int.new(1))
       if !(f=@funcs[name])

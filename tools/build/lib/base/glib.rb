@@ -36,7 +36,7 @@ end
 module GObjectIntrospection
   module Lib
     extend FFI::Library
-    ffi_lib "libgirepository-1.0.so.1"
+    ffi_lib "libgirepository-1.0.so"
 
     # IRepository
     enum :IRepositoryLoadFlags, [:LAZY, (1 << 0)]

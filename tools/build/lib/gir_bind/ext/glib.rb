@@ -32,7 +32,7 @@ module GirBind
 
         this=class << self;self;end
 
-        f3 = FFIBind::Function.add_function t="/usr/lib/i386-linux-gnu/libglib-2.0.so.0","g_list_next",[:pointer],:bool,[-1]
+        f3 = FFIBind::Function.add_function t=@ns.ffi_lib,"g_list_next",[:pointer],:bool,[-1]
         define_method :next do
           self.class.wrap(f3.invoke(self))
         end

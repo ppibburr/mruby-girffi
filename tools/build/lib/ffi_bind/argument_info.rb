@@ -60,15 +60,7 @@ class FFIBind::ArgumentInfo < Hash
             if !v
               v = CFunc::Pointer.new
             else
-              # append SInt8[v.length-1] of v.bytes
-              cstr = CFunc::SInt8[v.length]
-              c = 0
-              v.each_byte do |b|
-                cstr[c].value = b
-                c += 1
-              end
-              cstr[c].value = 0
-              v = cstr
+              v = CFunc::Pointer.refer(v.addr)
             end
             ary[i].value = v  
           else
