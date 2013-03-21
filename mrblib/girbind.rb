@@ -221,6 +221,11 @@ module CFunc
       end
     end
 
+    def get_symbol name,rt = CFunc::Pointer
+       @dlh ||= CFunc[:dlopen].call(@libname,CFunc::Int.new(1))  
+       return CFunc::call(rt,:dlsym,@dlh,name) 
+    end
+
     def call rt,name,*args
       @dlh ||= CFunc[:dlopen].call(@libname,CFunc::Int.new(1))
       if !(f=@funcs[name])
@@ -506,15 +511,7 @@ class FFIBind::ArgumentInfo < Hash
             if !v
               v = CFunc::Pointer.new
             else
-              # append SInt8[v.length-1] of v.bytes
-              cstr = CFunc::SInt8[v.length]
-              c = 0
-              v.each_byte do |b|
-                cstr[c].value = b
-                c += 1
-              end
-              cstr[c].value = 0
-              v = cstr
+              v = CFunc::Pointer.refer(v.addr)
             end
             ary[i].value = v  
           else
@@ -1612,7 +1609,7 @@ module GirBind
 
         this=class << self;self;end
 
-        f3 = FFIBind::Function.add_function t="/usr/lib/i386-linux-gnu/libglib-2.0.so.0","g_list_next",[:pointer],:bool,[-1]
+        f3 = FFIBind::Function.add_function t=@ns.ffi_lib,"g_list_next",[:pointer],:bool,[-1]
         define_method :next do
           self.class.wrap(f3.invoke(self))
         end
@@ -1678,7 +1675,7 @@ end
 module GObjectIntrospection
   module Lib
     extend FFI::Library
-    ffi_lib "libgirepository-1.0.so.1"
+    ffi_lib "libgirepository-1.0.so"
 
     # IRepository
     enum :IRepositoryLoadFlags, [:LAZY, (1 << 0)]
