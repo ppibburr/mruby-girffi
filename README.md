@@ -4,14 +4,14 @@
 [mrb-ffi]: https://github.com/schmurfy/mruby-rubyffi-compat
 [alloc]: https://github.com/ppibburr/mruby-allocate
 [nc]:   https://github.com/ppibburr/mruby-named-constants
-[ffi]:  https://github.com//ruby-ffi
-[gir]: https://gnome.org
-[gobject]: https://gnome.org
-[glib]: https://
+[ffi]:  https://github.com/ffi/ffi
+[gir]: http://developer.gnome.org/gi/unstable/gi-girepository.html
+[gobject]: https://developer.gnome.org/gobject/stable/
+[glib]: https://developer.gnome.org/glib/stable/
 
 Synopsis
 ===
-Provide complete API access to C libraries introspectable by [GObjectIntropsection][gir]
+[MRuby][mruby] library that provides complete API access to C libraries introspectable by [GObjectIntropsection][gir]
 Bindings are dynamicaly generated as needed via usage of [mruby-gobject-intropsection][mrb-gir]
 
 `./mrblib/mruby-girffi.rb` will load on Ruby-1.9 provided `mruby-gobject-introspection/mrblib/mruby-gobject-introspection.rb` and `ffi` are required
@@ -23,7 +23,7 @@ MRBGEMS:
 * [mruby-rubyffi-compat][mrb-ffi]        A CRuby FFI compatable FFI implemention for mruby.
 * [mruby-gobject-introspection][mrb-gir] Bindings to [libgirepository][gir]
 * [mruby-allocate][alloc]                Provides `Class#allocate`
-* [mruby-named-constants][nc]            Constants defined like `const_set(:Foo,Class.new)` returns the constant name for `inspect`
+* [mruby-named-constants][nc]            Constants via `const_set(:Foo,Class.new)` returns the constant name for `inspect`
 
 Libraries:
 * [libgirepository][gir]     Allows to introspect `GObject` based libraries
