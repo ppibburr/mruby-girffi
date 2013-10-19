@@ -277,12 +277,14 @@ module GirFFI
       return ffi_invoker
     end
     
-    def bind_module_function f,data
-      invoker = bind_function data
+    def bind_module_function f,f_data
+      invoker = bind_function f_data
       
       singleton_class.class_eval do
         define_method f do |*o,&b|
-          self::Lib.send data.symbol.to_sym,*o,&b
+          o = GirFFI::handle_passed_function_arguments(o)
+          
+          f_data.call *o,&b
         end
       end
       
@@ -334,7 +336,7 @@ class ::Object
 end
 
 module GirFFI
-  CB = Proc.new do p 8 end
+  CB = []
   # Some default hooks for namespace bindings
   NICE = {
     # Gtk versions < 3.0 have `Gtk::Object`
@@ -356,8 +358,8 @@ module GirFFI
       
       class GObject::Object
         def signal_connect s,&b
-          #GirFFI::CB << b
-          GObject::Lib::g_signal_connect_data(self.to_ptr,s,GirFFI::CB,nil.to_ptr,nil.to_ptr,nil.to_ptr)
+          GirFFI::CB << b
+          GObject::Lib::g_signal_connect_data(self.to_ptr,s,b,nil,nil,nil)
         end
       end   
     end
