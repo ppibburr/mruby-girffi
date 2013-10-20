@@ -34,22 +34,7 @@ module GirFFI
     module Function
       include Callable
       def call *o,&b
-        o = o.map do |q|
-          if q.respond_to?(:to_ptr)
-            next q.to_ptr
-          end
-          
-          if q.is_a?(::String)
-            next "#{q}"
-          end
-          
-          if !q
-            next FFI::Pointer::NULL
-          end
-          
-          q
-        end
-        name_space::Lib.send(self.symbol,*o)
+        name_space::Lib.invoke_function(self.symbol.to_sym,*o)
       end
     end
     
@@ -217,6 +202,28 @@ module GirFFI
     end
   end
   
+  module FunctionInvoker
+    def invoke_function sym,*o,&b
+      o = o.map do |q|
+        if q.respond_to?(:to_ptr)
+          next q.to_ptr
+        end
+        
+        if q.is_a?(::String)
+          next "#{q}"
+        end
+        
+        if q == nil
+          next FFI::Pointer::NULL
+        end
+        
+        q
+      end
+      
+      send sym,*o,&b    
+    end
+  end
+  
   module NameSpace
     def const_missing c
       if q = self::find_constant(c)    
@@ -311,10 +318,14 @@ module GirFFI
         lib = NC.define_module(self,:Lib)
         lib.class_eval do
           extend FFI::Library
+          extend GirFFI::FunctionInvoker
+          
           
           ln = GirFFI::REPO.shared_library(ns).split(",").first
 
           ffi_lib "#{ln}"
+          
+          
         end
       end
       
@@ -353,13 +364,18 @@ module GirFFI
       GObject.extend GirFFI::NameSpace    
       GObject.bind_class :Object,GirFFI::Data::make(GirFFI::REPO.find_by_name("GObject","Object")) 
       
-      GObject::Lib.callback :GCallback,[:pointer,:pointer],:void
-      GObject::Lib.attach_function :g_signal_connect_data, [:pointer,:string,:GCallback,:pointer,:pointer,:pointer], :ulong
+      #GObject::Lib.callback :GCallback,[],:void
+      GObject::Lib.attach_function :g_signal_connect_data, [:pointer,:string,:pointer,:pointer,:pointer,:pointer], :ulong
       
       class GObject::Object
+        # TODO: get parameters type and legnth to the cb
+        # TODO: get result type of the cb
         def signal_connect s,&b
-          GirFFI::CB << b
-          GObject::Lib::g_signal_connect_data(self.to_ptr,s,b,nil,nil,nil)
+          #GirFFI::CB << b
+          # 
+          GirFFI::CB << cb = FFI::Closure.new([:pointer,:pointer],:void,&b)
+          
+          GObject::Lib::invoke_function(:g_signal_connect_data,self.to_ptr,s,cb,nil,nil,nil)
         end
       end   
     end
