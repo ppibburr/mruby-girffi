@@ -2,11 +2,15 @@ module GirFFI
   REPO = GObjectIntrospection::IRepository.default
 
   module Data
-    module Object
+    module BaseObject
       def get_class()
         return name_space.const_get(safe_name.to_sym)
-      end
-    
+      end    
+    end
+  
+    module Object
+      include BaseObject    
+      
       def parent?
         if namespace == "GObject" and safe_name == "Object"
           return GirFFI::BaseObject
@@ -23,6 +27,11 @@ module GirFFI
     end
     
     module Struct
+      include BaseObject       
+    end
+    
+    module ObjectClass
+      include GirFFI::Data::Struct
     end
     
     module Callable
@@ -72,6 +81,11 @@ module GirFFI
     
     module Function
       include Callable
+      def get_class()
+        info = GirFFI::Data.make container
+        info.get_class
+      end
+      
       def call *o,&b
         args,ret = (@signature ||= get_signature())
         
@@ -111,8 +125,14 @@ module GirFFI
       q = data.class
 
       if q == GObjectIntrospection::IStructInfo
-        data.type = :struct
-        data.extend GirFFI::Data::Struct
+        if data.gtype_struct?
+          data.type = :class
+          data.extend GirFFI::Data::ObjectClass
+        
+        else
+          data.type = :struct
+          data.extend GirFFI::Data::Struct
+        end
       elsif q == GObjectIntrospection::IObjectInfo
         data.type = :object
         data.extend GirFFI::Data::Object
@@ -148,43 +168,18 @@ module GirFFI
     end
   end
 
-  class BaseObject
-    def self.find_signal s
-      klass = data.name_space.const_get(:"#{data.name}Class")
+  class GirFFI::Object
+    def self.define_structure
+      sc = NC::define_class self, :StructClass, FFI::Struct
+      sc.extend GirFFI::StructClass
+      
+      q=data.fields.map do |f| [f.name.to_sym, f.field_type.get_ffi_type] end
+      q = q.flatten
 
-      if q = klass.data.fields.find do |f| f.name == s end
-        info = GirFFI::Data.make q.field_type.interface      
-        info = GirFFI::Data.make info
-        return info
-      end
+      sc.layout *q
+      sc.set_object_class self
       
-      sc = self.superclass
-      
-      while sc != GirFFI::BaseObject
-        break if sc == GirFFI::BaseObject
-      
-        klass = sc.data.name_space.const_get(:"#{data.name}Class")
-
-        if q = klass.data.fields.find do |f| f.name == s end
-          info = GirFFI::Data.make q.field_type.interface      
-          info = GirFFI::Data.make info
-          return info
-        end
-        
-        sc = sc.superclass
-      end
-      
-      return nil
-    end
-  
-    def self.get_signal_signature s
-      signature = [[],:void]
-
-      if info = find_signal(s)
-        signature = info.get_signature
-      end
-    
-      return signature
+      return sc    
     end
   
     def get_struct()
@@ -254,8 +249,15 @@ module GirFFI
     end
   
     def self.find_function f
-      info = self.data.find_method2("#{f.to_s}")
-      return info
+      if info = self.data.find_method2("#{f.to_s}")
+        return info
+      end
+      
+      if superclass.ancestors.index(GirFFI::BaseObject)
+        return superclass.find_function f
+      end
+      
+      return nil
     end
     
     def self.find_method m
@@ -280,28 +282,121 @@ module GirFFI
     
     def method_missing m,*o,&b
       if data=self.class.find_method(m)
-        invoker = self.class.bind_instance_method(m,data)
+        invoker = data.get_class.bind_instance_method(m,data)
+        
         return data.call(self,*o,&b)
       end
-      
-      #
-      # begin method inheritance
-      #
-      
-      c = self.class
+     
+      super
+    end
+  end
+  
+  class GirFFI::Struct < GirFFI::Object
+  end
 
-      # iterate the ancestory, searching for the method
-      while c != ::Object
-        # found inherited method
-        if data = c.superclass.find_method(m)
-          invoker = c.superclass.bind_instance_method(m,data)
-          return data.call(self,*o,&b)
-        end
-        
-        c = c.superclass
+  class BaseObject < GirFFI::Object
+    def self.get_object_class
+      return klass = data.name_space.const_get(:"#{data.name}Class")    
+    end
+  
+    def self.find_inherited t, m, n
+      if t == :class
+        obj = get_object_class()
+      elsif t == :object
+        obj = self
       end
       
-      super
+      if info = obj.data.send(m).find do |f| f.name == n end      
+        info = GirFFI::Data.make info
+        return info
+      end
+      
+      return nil unless self.superclass.respond_to?(:find_inherited)
+      
+      return self.superclass.find_inherited(t, m ,n)    
+    end
+  
+    def self.find_field n
+      return find_inherited :class, :fields, n
+    end
+    
+    def self.find_property n
+      return find_inherited :object, :properties, n
+    end
+
+    
+    def get_property n
+      info = self.class.find_method(:get_property)
+      info.get_class.bind_instance_method :get_property, info
+      
+      self.class.class_eval do
+        alias :_get_property_ :get_property
+        
+        define_method :get_property do |n|
+          pi = self.class.find_property("#{n}")
+          pt = pi.get_type_name
+          
+          v = GObject::Value::StructClass.new
+          
+          v[:g_type] = 0
+         
+          GObject::Value::init v.pointer,GObject::type_from_name("#{pt}") 
+
+          if pi.object?
+            m = :object
+          else
+            case pi.property_type.get_ffi_type
+              when :string
+                m = "string"
+              when :pointer
+                m = "pointer"
+              when :int
+                m = "int"
+              when :long
+                m = "long"
+              when :double
+                m = "double"
+              when :float
+                m = "float"
+            end
+          end
+
+          _get_property_(n,v.pointer)
+          
+          result = v.wrapped.send("get_#{m}")
+         
+          if pi.object?
+            next nil if result.to_ptr.is_null?
+          
+            info = GirFFI::Data.make pi.get_object
+            result = info.get_class.wrap(result.to_ptr)
+            
+          end
+          
+          next result        
+        end
+      end
+      
+      send :get_property, n
+    end
+  
+    def self.find_signal s
+      if info = find_inherited(:class, :fields, s)
+        info = GirFFI::Data.make info.field_type.interface      
+        return info
+      end
+      
+      return nil
+    end
+  
+    def self.get_signal_signature s
+      signature = [[],:void]
+
+      if info = find_signal(s)
+        signature = info.get_signature
+      end
+    
+      return signature
     end
   end
   
@@ -361,8 +456,10 @@ module GirFFI
       case info.type
       when :object
         return bind_class(c,info) 
-      when :struct
+      when :class
         return bind_class_object(c,info)
+      when :struct
+        return bind_struct(c,info)
       when :enum
         return bind_enum(c,info)
       end
@@ -370,26 +467,26 @@ module GirFFI
       return nil
     end
     
+    def bind_struct c,info;
+      cls = NC::define_class(self, c.to_sym, GirFFI::Struct)
+      cls.instance_variable_set("@data",info)      
+      
+      cls.define_structure()
+      
+      return cls
+    end
+    
     def bind_class n,info
       cls = NC::define_class self,n.to_sym, info.parent?()
       cls.instance_variable_set("@data",info)
-
-      sc = NC::define_class cls, :StructClass, FFI::Struct
-      sc.extend GirFFI::StructClass
       
-      q=cls.data.fields.map do |f| [f.name.to_sym, f.field_type.get_ffi_type] end
-      q = q.flatten
-
-      sc.layout *q
-      sc.set_object_class cls
-    
-      self::Lib::typedef("#{self}#{n}".to_sym, sc.by_ref)
+      cls.define_structure()
     
       return cls
     end
     
     def bind_class_object n,info
-      cls = NC::define_class self,n.to_sym, BaseObject
+      cls = NC::define_class self,n.to_sym, GirFFI::Object
       cls.instance_variable_set("@data",info)
 
       return cls
@@ -551,4 +648,13 @@ module GirFFI
   # Since `GObject` is always present
   # We will make it `GirFFI` compatable
   bind "GObject"  
+    GObject::Value
+    class GObject::Value
+      bind_instance_method :unset, find_method(:unset)
+      alias :unset_ :unset
+      
+      def unset
+        GObject::Lib::g_value_unset self.to_ptr
+      end
+    end  
 end
