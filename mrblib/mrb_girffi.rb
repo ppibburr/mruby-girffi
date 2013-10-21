@@ -32,7 +32,10 @@ module GirFFI
       
       def get_signature
         params = args.map do |a|
-          p  a if self.is_a?(GObjectIntrospection::ISignalInfo)
+          if t=a.argument_type.flattened_tag == :object
+            cls = ::Object.const_get(ns=a.argument_type.interface.namespace.to_sym).const_get(n=a.argument_type.interface.name.to_sym)
+            next cls::StructClass
+          end
           # Allow symbols as arguments for parameters of enum
           if (e=a.argument_type.flattened_tag) == :enum
             key = a.argument_type.interface.name
@@ -56,8 +59,13 @@ module GirFFI
           params = [:pointer].push(*params)
         end
         
-        ret = get_ffi_type      
-        
+        if t=return_type.flattened_tag == :object
+          cls = ::Object.const_get(ns=return_type.interface.namespace.to_sym).const_get(n=return_type.interface.name.to_sym)
+          ret = cls::StructClass
+        else    
+          ret = get_ffi_type      
+        end
+
         return params,ret
       end
     end
@@ -65,7 +73,15 @@ module GirFFI
     module Function
       include Callable
       def call *o,&b
-        name_space::Lib.invoke_function(self.symbol.to_sym,*o)
+        args,ret = (@signature ||= get_signature())
+        
+        result = name_space::Lib.invoke_function(self.symbol.to_sym,*o)
+        
+        if ret.is_a?(GirFFI::StructClass);
+          return ret.new(result).wrapped()
+        end
+        
+        return result
       end
     end
     
@@ -159,12 +175,16 @@ module GirFFI
   
     def self.get_signal_signature s
       signature = [[],:void]
-      
+
       if info = find_signal(s)
         signature = info.get_signature
       end
     
       return signature
+    end
+  
+    def get_struct()
+      @struct ||= self.class::StructClass.new(to_ptr)
     end
   
     def self.new *o,&b
@@ -180,6 +200,14 @@ module GirFFI
     end
   
     def self.wrap ptr
+      return ptr if ptr.is_a?(self)
+    
+      if ptr.is_a?(FFI::Struct)
+        ptr = ptr.pointer
+      elsif ptr.respond_to?(:to_ptr)
+        ptr = ptr.to_ptr
+      end
+     
       ins = allocate
       ins.instance_variable_set("@ptr",ptr)
       return ins
@@ -205,7 +233,7 @@ module GirFFI
           result = m_data.call(*o,&b)
 
           if m_data.constructor?
-            return wrap(result)
+            return wrap(result) 
           end
           
           return result
@@ -235,9 +263,9 @@ module GirFFI
       if data=find_function(m)
         invoker = bind_class_method(m,data)
         result = data.call(*o,&b)
-
+        
         if data.constructor?
-          return wrap(result)
+          return wrap(result)  
         end
           
         return result
@@ -291,7 +319,26 @@ module GirFFI
         q
       end
       
-      send sym,*o,&b    
+      
+      result=send sym,*o,&b    
+    end
+  end
+  
+  module StructClass
+    def set_object_class cls
+      @object_class = cls
+    end
+    
+    def object_class
+      @object_class
+    end
+    
+    def self.extended cls
+      cls.class_eval do
+        define_method :wrapped do
+          next self.class.object_class.wrap(self)
+        end
+      end
     end
   end
   
@@ -323,6 +370,17 @@ module GirFFI
       cls = NC::define_class self,n.to_sym, info.parent?()
       cls.instance_variable_set("@data",info)
 
+      sc = NC::define_class cls, :StructClass, FFI::Struct
+      sc.extend GirFFI::StructClass
+      
+      q=cls.data.fields.map do |f| [f.name.to_sym, f.field_type.get_ffi_type] end
+      q = q.flatten
+
+      sc.layout *q
+      sc.set_object_class cls
+    
+      self::Lib::typedef("#{self}#{n}".to_sym, sc.by_ref)
+    
       return cls
     end
     
@@ -457,9 +515,20 @@ module GirFFI
           # 
           
           signature = self.class.get_signal_signature(s)
+          params = signature.first
+          result = signature.last
+                      
           
-          
-          GirFFI::CB << cb = FFI::Closure.new(*signature, &b)
+          GirFFI::CB << cb = FFI::Closure.new(*signature) do |*o|
+            o.each_with_index do |prm,i|
+              if params[i].is_a?(GirFFI::StructClass)
+                o[i] = params[i].new(prm).wrapped()
+              end
+            end
+           
+            
+            b.call(*o)
+          end
           
           GObject::Lib::invoke_function(:g_signal_connect_data,self.to_ptr,s,cb,nil,nil,nil)
         end
