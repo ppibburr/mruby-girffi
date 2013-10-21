@@ -324,6 +324,26 @@ module GirFFI
       return find_inherited :object, :properties, n
     end
 
+
+    def set_property n,v
+      pi = self.class.find_property(n)
+      pt=FFI::MemoryPointer.new(:pointer)
+      
+      if pi.object?
+        if v.respond_to?(:to_ptr)
+          pt.write_pointer v.to_ptr
+        elsif v.is_a?(FFI::Pointer)
+          pt.write_pointer v
+        end
+      end
+      
+      ft = pi.property_type.get_ffi_type
+
+      pt.send("write_#{ft}",v)
+      
+      set(n,pt)
+    end
+  
     
     def get_property n
       pi = self.class.find_property(n)
@@ -565,7 +585,8 @@ module GirFFI
     :GObject => Proc.new do
       GObject.extend GirFFI::NameSpace    
       GObject.bind_class :Object,GirFFI::Data::make(GirFFI::REPO.find_by_name("GObject","Object")) 
-      
+      p GObject::Lib.attach_function :g_object_set, [:pointer,:string,:pointer,:pointer], :void
+           
       p GObject::Lib.attach_function :g_object_get, [:pointer,:string,:pointer,:pointer], :void
       #GObject::Lib.callback :GCallback,[],:void
       GObject::Lib.attach_function :g_signal_connect_data, [:pointer,:string,:pointer,:pointer,:pointer,:pointer], :ulong
@@ -574,6 +595,10 @@ module GirFFI
         def get s,pt
           GObject::Lib.g_object_get self.to_ptr,"#{s}",pt,nil.to_ptr
         end
+     
+        def set s,pt
+          GObject::Lib.g_object_set self.to_ptr,"#{s}",pt,nil.to_ptr
+        end      
       
         # TODO: get parameters type and legnth to the cb
         # TODO: get result type of the cb
