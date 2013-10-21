@@ -161,7 +161,7 @@ module GirFFI
       sc = self.superclass
       
       while sc != GirFFI::BaseObject
-        break if sc == GirFFI::BaeObject
+        break if sc == GirFFI::BaseObject
       
         klass = sc.data.name_space.const_get(:"#{data.name}Class")
 
