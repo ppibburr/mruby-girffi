@@ -29,6 +29,37 @@ module GirFFI
       def call *o,&b
         @callable.call *o,&b
       end
+      
+      def get_signature
+        params = args.map do |a|
+          p  a if self.is_a?(GObjectIntrospection::ISignalInfo)
+          # Allow symbols as arguments for parameters of enum
+          if (e=a.argument_type.flattened_tag) == :enum
+            key = a.argument_type.interface.name
+            
+            if FFI::Library.enums[key]
+              # Its already mapped
+              next key.to_sym
+            
+            else
+              # Map it
+              ::Object.const_get(a.argument_type.interface.namespace.to_sym)::find_constant(key.to_sym)
+              next key.to_sym
+            end
+          end
+          
+          # not enum
+          q = a.get_ffi_type()
+        end
+        
+        if self.respond_to?(:"method?") and method?
+          params = [:pointer].push(*params)
+        end
+        
+        ret = get_ffi_type      
+        
+        return params,ret
+      end
     end
     
     module Function
@@ -63,7 +94,10 @@ module GirFFI
       data.extend(GirFFI::Data)
       q = data.class
 
-      if q == GObjectIntrospection::IObjectInfo
+      if q == GObjectIntrospection::IStructInfo
+        data.type = :struct
+        data.extend GirFFI::Data::Struct
+      elsif q == GObjectIntrospection::IObjectInfo
         data.type = :object
         data.extend GirFFI::Data::Object
       elsif q == GObjectIntrospection::IEnumInfo
@@ -76,7 +110,10 @@ module GirFFI
         if data.constructor?()
           data.type=:constructor
           data.extend GirFFI::Data::Constructor
-        end   
+        end
+      elsif data.is_a?(GObjectIntrospection::ICallableInfo)
+        data.type = :callable
+        data.extend GirFFI::Data::Callable
       end
 
       return data
@@ -96,6 +133,40 @@ module GirFFI
   end
 
   class BaseObject
+    def self.find_signal s
+      klass = data.name_space.const_get(:"#{data.name}Class")
+
+      if q = klass.data.fields.find do |f| f.name == s end
+        info = GirFFI::Data.make q.field_type.interface      
+        info = GirFFI::Data.make info
+        return info
+      end
+      
+      sc = self.superclass
+      
+      while sc != GirFFI::BaseObject
+        klass = sc.data.name_space.const_get(:"#{data.name}Class")
+
+        if q = klass.data.fields.find do |f| f.name == s end
+          info = GirFFI::Data.make q.field_type.interface      
+          info = GirFFI::Data.make info
+          return info
+        end
+      end
+      
+      return nil
+    end
+  
+    def self.get_signal_signature s
+      signature = [[],:void]
+      
+      if info = find_signal(s)
+        signature = info.get_signature
+      end
+    
+      return signature
+    end
+  
     def self.new *o,&b
       if find_function(:new)
         return method_missing(:new,*o,&b)
@@ -235,12 +306,12 @@ module GirFFI
   
     def find_constant c
       info = GirFFI::Data.make(GObjectIntrospection::IRepository.default.find_by_name(self.to_s,c.to_s))
- 
+
       case info.type
       when :object
         return bind_class(c,info) 
       when :struct
-      
+        return bind_class_object(c,info)
       when :enum
         return bind_enum(c,info)
       end
@@ -254,6 +325,13 @@ module GirFFI
 
       return cls
     end
+    
+    def bind_class_object n,info
+      cls = NC::define_class self,n.to_sym, BaseObject
+      cls.instance_variable_set("@data",info)
+
+      return cls
+    end    
     
     def bind_enum n,info
       cls = NC::define_class self,info.name,::Object
@@ -281,31 +359,7 @@ module GirFFI
     end
     
     def bind_function data
-      args = data.args.map do |a|
-        # Allow symbols as arguments for parameters of enum
-        if (e=a.argument_type.flattened_tag) == :enum
-          key = a.argument_type.interface.name
-          
-          if FFI::Library.enums[key]
-            # Its already mapped
-            next key.to_sym
-          
-          else
-            # Map it
-            ::Object.const_get(a.argument_type.interface.namespace.to_sym)::find_constant(key.to_sym)
-            next key.to_sym
-          end
-        end
-        
-        # not enum
-        q = a.get_ffi_type()
-      end
-      
-      if data.method?
-        args = [:pointer].push(*args)
-      end
-      
-      ret = data.get_ffi_type
+      args, ret = data.get_signature 
       
       ffi_invoker = self::Lib.attach_function data.symbol.to_sym,args,ret
 
@@ -401,7 +455,13 @@ module GirFFI
         def signal_connect s,&b
           #GirFFI::CB << b
           # 
-          GirFFI::CB << cb = FFI::Closure.new([:pointer,:pointer],:void,&b)
+          
+          signature = self.class.get_signal_signature(s)
+          
+          
+          GirFFI::CB << cb = FFI::Closure.new(*signature) do |*o|
+            
+          end
           
           GObject::Lib::invoke_function(:g_signal_connect_data,self.to_ptr,s,cb,nil,nil,nil)
         end
