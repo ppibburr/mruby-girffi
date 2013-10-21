@@ -459,9 +459,7 @@ module GirFFI
           signature = self.class.get_signal_signature(s)
           
           
-          GirFFI::CB << cb = FFI::Closure.new(*signature) do |*o|
-            
-          end
+          GirFFI::CB << cb = FFI::Closure.new(*signature, &b)
           
           GObject::Lib::invoke_function(:g_signal_connect_data,self.to_ptr,s,cb,nil,nil,nil)
         end
