@@ -262,10 +262,10 @@ module GirFFI
       cls.class_eval do
         info.members.each_with_index do |n,i|
           const_set :"#{n.upcase}", v=info.value(i).value
-          values.push(v,n.to_sym)
+          values.push(n.to_sym,v)
         end
       end
-      p values
+      
       self::Lib.enum n,values
       
       return cls
