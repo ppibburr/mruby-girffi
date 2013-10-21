@@ -326,58 +326,19 @@ module GirFFI
 
     
     def get_property n
-      info = self.class.find_method(:get_property)
-      info.get_class.bind_instance_method :get_property, info
+      pi = self.class.find_property(n)
+      get(n, pt=FFI::MemoryPointer.new(:pointer))
       
-      self.class.class_eval do
-        alias :_get_property_ :get_property
+      if pi.object?
+        return nil if pt.get_pointer(0).is_null?
         
-        define_method :get_property do |n|
-          pi = self.class.find_property("#{n}")
-          pt = pi.get_type_name
-          
-          v = GObject::Value::StructClass.new
-          
-          v[:g_type] = 0
-         
-          GObject::Value::init v.pointer,GObject::type_from_name("#{pt}") 
-
-          if pi.object?
-            m = :object
-          else
-            case pi.property_type.get_ffi_type
-              when :string
-                m = "string"
-              when :pointer
-                m = "pointer"
-              when :int
-                m = "int"
-              when :long
-                m = "long"
-              when :double
-                m = "double"
-              when :float
-                m = "float"
-            end
-          end
-
-          _get_property_(n,v.pointer)
-          
-          result = v.wrapped.send("get_#{m}")
-         
-          if pi.object?
-            next nil if result.to_ptr.is_null?
-          
-            info = GirFFI::Data.make pi.get_object
-            result = info.get_class.wrap(result.to_ptr)
-            
-          end
-          
-          next result        
-        end
+        info = GirFFI::Data.make pi.get_object
+        return info.get_class.wrap(pt.get_pointer(0))
       end
       
-      send :get_property, n
+      ft = pi.property_type.get_ffi_type
+
+      return pt.get_pointer(0).send("read_#{ft}")
     end
   
     def self.find_signal s
@@ -605,10 +566,15 @@ module GirFFI
       GObject.extend GirFFI::NameSpace    
       GObject.bind_class :Object,GirFFI::Data::make(GirFFI::REPO.find_by_name("GObject","Object")) 
       
+      p GObject::Lib.attach_function :g_object_get, [:pointer,:string,:pointer,:pointer], :void
       #GObject::Lib.callback :GCallback,[],:void
       GObject::Lib.attach_function :g_signal_connect_data, [:pointer,:string,:pointer,:pointer,:pointer,:pointer], :ulong
       
       class GObject::Object
+        def get s,pt
+          GObject::Lib.g_object_get self.to_ptr,"#{s}",pt,nil.to_ptr
+        end
+      
         # TODO: get parameters type and legnth to the cb
         # TODO: get result type of the cb
         def signal_connect s,&b
