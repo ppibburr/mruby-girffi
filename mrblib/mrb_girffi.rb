@@ -255,8 +255,20 @@ module GirFFI
       return cls
     end
     
-    def bind_enum n
-    
+    def bind_enum n,info
+      cls = NC::define_class self,info.name,::Object
+      values = []
+      
+      cls.class_eval do
+        info.members.each_with_index do |n,i|
+          const_set :"#{n.upcase}", v=info.value(i).value
+          values.push(v,n.to_sym)
+        end
+      end
+      p values
+      self::Lib.enum n,values
+      
+      return cls
     end
     
     def find_function f
@@ -270,6 +282,22 @@ module GirFFI
     
     def bind_function data
       args = data.args.map do |a|
+        # Allow symbols as arguments for parameters of enum
+        if (e=a.argument_type.flattened_tag) == :enum
+          key = a.argument_type.interface.name
+          
+          if FFI::Library.enums[key]
+            # Its already mapped
+            next key.to_sym
+          
+          else
+            # Map it
+            ::Object.const_get(a.argument_type.interface.namespace.to_sym)::find_constant(key.to_sym)
+            next key.to_sym
+          end
+        end
+        
+        # not enum
         q = a.get_ffi_type()
       end
       
