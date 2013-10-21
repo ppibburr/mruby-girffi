@@ -161,6 +161,8 @@ module GirFFI
       sc = self.superclass
       
       while sc != GirFFI::BaseObject
+        break if sc == GirFFI::BaeObject
+      
         klass = sc.data.name_space.const_get(:"#{data.name}Class")
 
         if q = klass.data.fields.find do |f| f.name == s end
@@ -168,6 +170,8 @@ module GirFFI
           info = GirFFI::Data.make info
           return info
         end
+        
+        sc = sc.superclass
       end
       
       return nil
