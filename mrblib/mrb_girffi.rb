@@ -48,16 +48,9 @@ module GirFFI
           # Allow symbols as arguments for parameters of enum
           if (e=a.argument_type.flattened_tag) == :enum
             key = a.argument_type.interface.name
-            
-            if FFI::Library.enums[key]
-              # Its already mapped
-              next key.to_sym
-            
-            else
-              # Map it
-              ::Object.const_get(a.argument_type.interface.namespace.to_sym)::find_constant(key.to_sym)
-              next key.to_sym
-            end
+            ::Object.const_get(a.argument_type.interface.namespace.to_sym).const_get(key)
+
+            next key.to_sym
           end
           
           # not enum
