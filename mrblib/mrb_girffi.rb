@@ -642,34 +642,10 @@ module GirFFI
     end
   end
   
-  GirFFI::bind "GLib"
-  
   # `GObjectIntrospection` has already loaded `GObject`, and has to.
   # Since `GObject` is always present
   # We will make it `GirFFI` compatable
-  bind "GObject"  
-    GObject::Value
-    class GObject::Value
-      bind_instance_method :unset, find_method(:unset)
-      alias :unset_ :unset
-      
-      def unset
-        GObject::Lib::g_value_unset self.to_ptr
-      end
-    end  
-end
-
-module GObject
-  module Lib
-    attach_function :g_type_name_from_instance, [:pointer], :string
-    attach_function :g_type_name_from_class, [:pointer], :string    
-  end
-  
-  module Type
-    def self.name_from_class(ins)
-      return GObject::Lib::g_type_name_from_instance(ins)
-    end
-  end
+  bind "GObject"   
 end
 
 module GirFFI
