@@ -680,11 +680,11 @@ module GirFFI
     return info.get_class()
   end
 
-  def self.upcast_object w
-    w = w.to_ptr if w.respond_to?(:to_ptr)
-    w = w.pointer if w.respond_to?(:pointer)
-    
-    type = GObject::Object::StructClass.new(w)[:g_type_instance]
+  def self.type_from_instance ins
+    ins = ins.to_ptr if ins.respond_to?(:to_ptr)    
+    ins = ins.pointer if ins.respond_to?(:pointer) 
+      
+    type = GObject::Object::StructClass.new(ins)[:g_type_instance]
     
     if !type.is_a?(FFI::Pointer) and !type.is_a?(Integer)
       type = CFunc::UInt64.refer(type).value
@@ -692,8 +692,29 @@ module GirFFI
       type = type.read_uint64
     end
     
-    cls = class_from_type(type)
-  
+    return type  
+  end
+
+  # upcast the object
+  #
+  # take for example an instance of Gtk::Button
+  # The hierarchy would be:
+  #
+  # GObject::Object
+  # Gtk::Object
+  # Gtk::Widget
+  # ...
+  # Gtk::Button
+  #
+  # many functions in libraries based on GObject return casts to the lowest common GType
+  # this ensures that, in this example, an instance of Gtk::Button would be returned 
+  def self.upcast_object w
+    type = type_from_instance(w)
+      
+    cls = class_from_type(type)  
+    
+    return w if w.is_a?(GirFFI::Object) and w.is_a?(cls)
+
     return cls.wrap(w)
   end
 end
