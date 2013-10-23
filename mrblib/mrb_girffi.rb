@@ -2,23 +2,23 @@ module GirFFI
   REPO = GObjectIntrospection::IRepository.default
 
   module Data
-    module BaseObject
+    module HasFunctions
       def get_class()
         return name_space.const_get(safe_name.to_sym)
       end    
     end
   
     module Object
-      include BaseObject    
+      include HasFunctions  
       
       def parent?
         if namespace == "GObject" and safe_name == "Object"
-          return GirFFI::BaseObject
+          return GirFFI::WrappedObject
         end
       
         parent = GirFFI::Data.make(parent())
 
-        return GirFFI::BaseObject unless parent
+        return GirFFI::WrappedObject unless parent
       
         q = parent.get_class()
         
@@ -27,7 +27,7 @@ module GirFFI
     end
     
     module Struct
-      include BaseObject       
+      include HasFunctions       
     end
     
     module ObjectClass
@@ -83,9 +83,19 @@ module GirFFI
         args,ret = (@signature ||= get_signature())
         
         result = name_space::Lib.invoke_function(self.symbol.to_sym,*o)
+       
+        #if return_type.tag == :glist
+        #  l = GLib::List.wrap(result)
+        #  a=[]
+        #  for i in 0..l.length-1
+        #    a << l.
+        #  end
+        #  return a
+        #end
         
         if ret.is_a?(GirFFI::StructClass);
-          return ret.new(result).wrapped()
+          # return ret.new(result).wrapped()
+          GirFFI::upcast_object(result)
         end
         
         return result
@@ -161,14 +171,35 @@ module GirFFI
     end
   end
 
+  # extended by (decsendant of GirFFI::Object)::StructClass
+  module StructClass
+    def set_object_class cls
+      @object_class = cls
+    end
+    
+    def object_class
+      @object_class
+    end
+    
+    def self.extended cls
+      cls.class_eval do
+        define_method :wrapped do
+          next self.class.object_class.wrap(self)
+        end
+      end
+    end
+  end
+
+  # Base class for wrapped objects
+  # Structs, Objects, structs of ObjectClass
   class GirFFI::Object
     def self.define_structure
       sc = NC::define_class self, :StructClass, FFI::Struct
       sc.extend GirFFI::StructClass
       
-      q=data.fields.map do |f| [f.name.to_sym, f.field_type.get_ffi_type] end
+      q=data.fields.map do |f| [f.name.to_sym, (t=f.field_type.get_ffi_type)  == :void ? :pointer : t] end
       q = q.flatten
-
+      
       sc.layout *q
       sc.set_object_class self
       
@@ -246,7 +277,7 @@ module GirFFI
         return info
       end
       
-      if superclass.ancestors.index(GirFFI::BaseObject)
+      if superclass.ancestors.index(GirFFI::WrappedObject)
         return superclass.find_function f
       end
       
@@ -284,10 +315,12 @@ module GirFFI
     end
   end
   
-  class GirFFI::Struct < GirFFI::Object
+  # Wraps Structs
+  class GirFFI::WrappedStruct < GirFFI::Object
   end
 
-  class BaseObject < GirFFI::Object
+  # Wrapper of GObject instances
+  class WrappedObject < GirFFI::Object
     def self.get_object_class
       return klass = data.name_space.const_get(:"#{data.name}Class")    
     end
@@ -345,8 +378,7 @@ module GirFFI
       if pi.object?
         return nil if pt.get_pointer(0).is_null?
         
-        info = GirFFI::Data.make pi.get_object
-        return info.get_class.wrap(pt.get_pointer(0))
+        return GirFFI::upcast_object(pt.get_pointer(0))
       end
       
       ft = pi.property_type.get_ffi_type
@@ -374,6 +406,7 @@ module GirFFI
     end
   end
   
+  # extended by (NameSpace)::Lib
   module FunctionInvoker
     def invoke_function sym,*o,&b
       o = o.map do |q|
@@ -397,24 +430,8 @@ module GirFFI
     end
   end
   
-  module StructClass
-    def set_object_class cls
-      @object_class = cls
-    end
-    
-    def object_class
-      @object_class
-    end
-    
-    def self.extended cls
-      cls.class_eval do
-        define_method :wrapped do
-          next self.class.object_class.wrap(self)
-        end
-      end
-    end
-  end
-  
+  # Wraps toplevel namespaces
+  # ie, GObject, GLib, Gtk, WebKit, Soup, etc
   module NameSpace
     def const_missing c
       if q = self::find_constant(c)    
@@ -424,6 +441,9 @@ module GirFFI
       super
     end
   
+    # check the namespace info for an info matching (#to_s)
+    # if one is found, it generate the constant
+    # ie, Enums, BitFields, Structs, ObjectClass's, Objects 
     def find_constant c
       info = GirFFI::Data.make(GObjectIntrospection::IRepository.default.find_by_name(self.to_s,c.to_s))
 
@@ -442,7 +462,7 @@ module GirFFI
     end
     
     def bind_struct c,info;
-      cls = NC::define_class(self, c.to_sym, GirFFI::Struct)
+      cls = NC::define_class(self, c.to_sym, GirFFI::WrappedStruct)
       cls.instance_variable_set("@data",info)      
       
       cls.define_structure()
@@ -530,17 +550,16 @@ module GirFFI
       
       mod.class_eval do
         extend GirFFI::NameSpace
+        
         lib = NC.define_module(self,:Lib)
+        
         lib.class_eval do
           extend FFI::Library
           extend GirFFI::FunctionInvoker
           
-          
           ln = GirFFI::REPO.shared_library(ns).split(",").first
 
           ffi_lib "#{ln}"
-          
-          
         end
       end
       
@@ -577,11 +596,12 @@ module GirFFI
     # GObject has `GObject::Object`, we force the binding to it    
     :GObject => Proc.new do
       GObject.extend GirFFI::NameSpace    
-      GObject.bind_class :Object,GirFFI::Data::make(GirFFI::REPO.find_by_name("GObject","Object")) 
-      p GObject::Lib.attach_function :g_object_set, [:pointer,:string,:pointer,:pointer], :void
-           
-      p GObject::Lib.attach_function :g_object_get, [:pointer,:string,:pointer,:pointer], :void
-      #GObject::Lib.callback :GCallback,[],:void
+      
+      GObject.bind_class :Object,GirFFI::Data::make(GirFFI::REPO.find_by_name("GObject","Object"))
+       
+      GObject::Lib.attach_function :g_object_set, [:pointer,:string,:pointer,:pointer], :void
+      GObject::Lib.attach_function :g_object_get, [:pointer,:string,:pointer,:pointer], :void
+
       GObject::Lib.attach_function :g_signal_connect_data, [:pointer,:string,:pointer,:pointer,:pointer,:pointer], :ulong
       
       class GObject::Object
@@ -593,21 +613,15 @@ module GirFFI
           GObject::Lib.g_object_set self.to_ptr,"#{s}",pt,nil.to_ptr
         end      
       
-        # TODO: get parameters type and legnth to the cb
-        # TODO: get result type of the cb
         def signal_connect s,&b
-          #GirFFI::CB << b
-          # 
-          
           signature = self.class.get_signal_signature(s)
           params = signature.first
           result = signature.last
-                      
           
           GirFFI::CB << cb = FFI::Closure.new(*signature) do |*o|
             o.each_with_index do |prm,i|
               if params[i].is_a?(GirFFI::StructClass)
-                o[i] = params[i].new(prm).wrapped()
+                o[i] = GirFFI::upcast_object(o[i])
               end
             end
            
@@ -628,6 +642,8 @@ module GirFFI
     end
   end
   
+  GirFFI::bind "GLib"
+  
   # `GObjectIntrospection` has already loaded `GObject`, and has to.
   # Since `GObject` is always present
   # We will make it `GirFFI` compatable
@@ -642,3 +658,41 @@ module GirFFI
       end
     end  
 end
+
+module GObject
+  module Lib
+    attach_function :g_type_name_from_instance, [:pointer], :string
+    attach_function :g_type_name_from_class, [:pointer], :string    
+  end
+  
+  module Type
+    def self.name_from_class(ins)
+      return GObject::Lib::g_type_name_from_instance(ins)
+    end
+  end
+end
+
+module GirFFI
+  def self.class_from_type type
+    info = GirFFI::REPO.find_by_gtype(type)
+    info = GirFFI::Data.make(info)
+
+    return info.get_class()
+  end
+
+  def self.upcast_object w
+    w = w.to_ptr if w.respond_to?(:to_ptr)
+    w = w.pointer if w.respond_to?(:pointer)
+    
+    type = GObject::Object::StructClass.new(w)[:g_type_instance]
+    
+    if !type.is_a?(FFI::Pointer) and !type.is_a?(Integer)
+      type = CFunc::UInt64.refer(type).value
+    end
+    
+    cls = class_from_type(type)
+  
+    return cls.wrap(w)
+  end
+end
+
