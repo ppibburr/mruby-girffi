@@ -688,6 +688,8 @@ module GirFFI
     
     if !type.is_a?(FFI::Pointer) and !type.is_a?(Integer)
       type = CFunc::UInt64.refer(type).value
+    elsif type.is_a?(FFI::Pointer)
+      type = type.read_uint64
     end
     
     cls = class_from_type(type)
