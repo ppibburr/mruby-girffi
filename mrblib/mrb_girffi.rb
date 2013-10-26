@@ -35,16 +35,208 @@ module GirFFI
     end
     
     module Callable
+      def ruby_style_arguments *passed, &b
+        p [:prep_callable, symbol]
+        optionals = {}
+        nulls     = {}
+        dropped   = {}
+        outs      = {}
+        inouts    = {}
+        arrays    = {}
+        
+        callbacks = []
+        
+        return_values = []
+        
+        has_cb      = false
+        has_destroy = false
+        has_error   = false
+        
+        args_ = args()
+        
+        take = 0
+        
+        idx = {}
+        
+        args_.each_with_index do |a,i|
+          case a.direction
+            when :out
+              outs[i]    = a
+              dropped[i] = a
+              take += 1
+              next
+              
+            when :inout
+              inouts[i] = a
+          end
+          
+          if a.argument_type.tag == :array
+            arrays[i] = a
+          end
+          
+          if a.optional?
+            optionals[i] = a
+            dropped[i] = a
+          end
+          
+          if a.may_be_null?
+            nulls[i] = a
+            dropped[i] = a
+          end
+          
+          if data = a.closure >= 0
+            (has_cb = [a, args_[data]])
+            callbacks.push(i,data)
+            dropped[i] = a
+            take += 1
+            next
+          end
+          
+          if data = a.destroy >= 0
+            has_destroy = [a, args_[data]]
+            callbacks.push(i,data)
+            dropped[i] = a
+            take += 1
+            next
+          end
+          
+          if a.name == "error"
+            dropped[i] = a
+            has_error = i
+            take += 1
+            next
+          end
+          
+          if a.return_value?
+            return_values << i
+          end
+          
+          idx[i] = i-take  
+        end
+        
+        lp = nil
+        
+        dropped.keys.map do |i| idx[i] end.find_all do |q| q end.sort.reverse.each do |i|
+          if !lp
+            lp = i
+            next
+          end
+          
+          if lp - i == 1
+            lp = i
+            next()
+          end
+          
+          break()
+        end
+        
+        maxlen = minlen = args.length
+        
+        minlen -= 1 if has_cb
+        minlen -= 1 if has_destroy
+        minlen -= 1 if has_error
+        
+        maxlen -= 1 if has_destroy
+        maxlen -= 1 if has_error
+        maxlen -= 1 if has_cb
+        
+        if lp
+          minlen = lp + 1
+        end
+        
+        this = nil
+        if method?
+          this = passed[0]
+          passed.shift
+        end
+        
+        len = passed.length
+        
+        p [[:n_passed,len], [:min_args,minlen], [:max_args, maxlen]]
+        
+        raise "too few arguments: #{len} for #{minlen}"   if (passed.length) < minlen
+        raise "too many arguments: #{len} for #{maxlen}"  if (passed.length) > maxlen
+        
+        needed = args_.find_all do |a| !dropped[args_.index(a)] end
+        
+        result = []
+        
+        idx.keys.sort.each do |i|
+          result[i] = passed[idx[i]]
+        end
+  
+        outs.keys.each do |i|
+          result[i] = FFI::MemoryPointer.new(:pointer)
+        end  
+  
+        arrays.keys.each do |i|
+          q = result[i]
+          
+          next unless q
+          
+          next if q.is_a?(FFI::Pointer)
+          
+          type = args_[i].argument_type.element_type
+          type = GObjectIntrospection::ITypeInfo::TYPE_MAP[type]
+          
+          ptrs = q.map {|m| 
+            sp = FFI::MemoryPointer.new(type)
+            sp.send "write_#{type}", m
+          }
+          
+          block = FFI::MemoryPointer.new(:pointer, ptrs.length)
+          block.write_array_of_pointer ptrs
+          
+          case args_[i].direction
+          when :inout
+            result[i] = block.to_out false
+          else
+            result[i] = block
+          end
+        end
+        
+        inouts.each_key do |i|
+          next if (q=result[i]).is_a?(FFI::Pointer)
+          next if arrays[i]
+          
+          type = args_[i].argument_type.get_ffi_type
+          
+          ptr = FFI::MemoryPointer.new(type)
+          ptr.send :"write_#{type}", q
+          
+          result[i] = ptr.to_out true
+        end
+        
+        if q=has_cb
+          result[args_.index(q[0])] = b
+        end
+        
+        if q=has_error
+          result[q] = FFI::MemoryPointer.new(:pointer)
+        end
+        
+        if this
+          result = [this].push(*result)
+        end
+               
+        return result, inouts, outs, return_values, has_error
+      end    
+    
       def call *o,&b
         @callable.call *o,&b
       end
       
       def get_signature
         params = args.map do |a|
+          if a.direction == :inout
+            next :pointer
+          end
+        
           if t=a.argument_type.flattened_tag == :object
             cls = ::Object.const_get(ns=a.argument_type.interface.namespace.to_sym).const_get(n=a.argument_type.interface.name.to_sym)
             next cls::StructClass
           end
+      
           # Allow symbols as arguments for parameters of enum
           if (e=a.argument_type.flattened_tag) == :enum
             key = a.argument_type.interface.name
@@ -74,6 +266,7 @@ module GirFFI
     
     module Function
       include Callable
+      
       def get_class()
         info = GirFFI::Data.make container
         info.get_class
@@ -82,7 +275,13 @@ module GirFFI
       def call *o,&b
         args,ret = (@signature ||= get_signature())
         
+        o, inouts, outs, return_values, error = ruby_style_arguments(*o,&b)
+
+        p [:call, symbol, [args,ret], [:error, !!error], o]
+
         result = name_space::Lib.invoke_function(self.symbol.to_sym,*o)
+       
+        raise "error" if error and !error.get_pointer(0).is_null?
        
         #if return_type.tag == :glist
         #  l = GLib::List.wrap(result)
@@ -649,6 +848,7 @@ module GirFFI
 end
 
 module GirFFI
+  # return the class wrapping Gtype, type
   def self.class_from_type type
     info = GirFFI::REPO.find_by_gtype(type)
     info = GirFFI::Data.make(info)
@@ -656,6 +856,8 @@ module GirFFI
     return info.get_class()
   end
 
+  # @param ins [FFI::Pointer,#to_ptr, #pointer]
+  # return the GType of instance, +ins+
   def self.type_from_instance ins
     ins = ins.to_ptr if ins.respond_to?(:to_ptr)    
     ins = ins.pointer if ins.respond_to?(:pointer) 
