@@ -3,6 +3,7 @@ module GirFFI
 
   module Data
     module HasFunctions
+      # @return Class of the class wrapping types of info
       def get_class()
         return name_space.const_get(safe_name.to_sym)
       end    
@@ -11,6 +12,7 @@ module GirFFI
     module Object
       include HasFunctions  
       
+      # @return Class of the infos parent
       def parent?
         if namespace == "GObject" and safe_name == "Object"
           return GirFFI::WrappedObject
@@ -35,28 +37,39 @@ module GirFFI
     end
     
     module Callable
+      # Implements varargs, auto out|inout pointers, errors, conversion of arrays to pointer, auto handling of data and destroy notify
+      #
+      # Take `g_object_signal_connect_data(instance, name, callback, data, destroy, error)`
+      # the result is that this is allowed: 
+      #
+      # aGtkButton.signal_connect_data("clicked") do |widget,data|
+      #     p :in_callback 
+      # end
+      #
+      # @return Array<Array<the full arguments to pass to function>, Array<inouts>, Array<outs>, Array<return_values>, FFI::Pointer the error or nil> 
       def ruby_style_arguments *passed, &b
         p [:prep_callable, symbol]
-        optionals = {}
-        nulls     = {}
-        dropped   = {}
-        outs      = {}
-        inouts    = {}
-        arrays    = {}
         
-        callbacks = []
+        optionals = {} # optional arguments
+        nulls     = {} # arguments that accept null
+        dropped   = {} # arguments that may be removed for ruby style
+        outs      = {} # out parameters
+        inouts    = {} # inout parameters
+        arrays    = {} # array parameters
         
-        return_values = []
+        callbacks = [] # callbacks
         
-        has_cb      = false
-        has_destroy = false
-        has_error   = false
+        return_values = [] # arguments to pe returned as the result of calling the function
+        
+        has_cb      = false # indicates if we accept block b
+        has_destroy = false # indicates it acepts a destroy notify callback
+        has_error   = false # indicates if we should raise
         
         args_ = args()
         
-        take = 0
+        take = 0 # the number arguments to redecuced from the list in regards to dinding the ruby style argument index
         
-        idx = {}
+        idx = {} # map of full args to ruby style arguments indices
         
         args_.each_with_index do |a,i|
           case a.direction
@@ -169,6 +182,7 @@ module GirFFI
           result[i] = FFI::MemoryPointer.new(:pointer)
         end  
   
+        # convert to c array
         arrays.keys.each do |i|
           q = result[i]
           
@@ -195,6 +209,7 @@ module GirFFI
           end
         end
         
+        # point to the address
         inouts.each_key do |i|
           next if (q=result[i]).is_a?(FFI::Pointer)
           next if arrays[i]
@@ -226,6 +241,9 @@ module GirFFI
         @callable.call *o,&b
       end
       
+      # Derives the signature of ffi types of the callable
+      #
+      # @return Array of [Array<argument_types>, return_type]
       def get_signature
         params = args.map do |a|
           if a.direction == :inout
@@ -266,12 +284,21 @@ module GirFFI
     
     module Function
       include Callable
-      
+  
+      # Finds the class of the GObjectIntropsection::IBaseInfo#container
+      #
+      # @return the Class of the container    
       def get_class()
         info = GirFFI::Data.make container
         info.get_class
       end
       
+      # Invokes the function. 
+      # 
+      # @param o the arguments to be passed
+      # @param b the block if any to pass to the function
+      #
+      # @return The result of calling the function
       def call *o,&b
         args,ret = (@signature ||= get_signature())
         
@@ -447,6 +474,12 @@ module GirFFI
       return info
     end
   
+    # Binds a function as a class function
+    #
+    # @param m the method name
+    # @param m_data the function info
+    #
+    # @return FIXME
     def self.bind_class_method m,m_data
       data.name_space.bind_function m_data
 
@@ -462,7 +495,13 @@ module GirFFI
         end
       end
     end
-    
+
+    # Binds a function as an instance method
+    #
+    # @param m the method name
+    # @param m_data the function info
+    #
+    # @return FIXME    
     def self.bind_instance_method m,m_data
       data.name_space.bind_function m_data
       
@@ -471,6 +510,9 @@ module GirFFI
       end
     end
   
+    # Finds the function named +f+
+    #
+    # @param f #to_s the name of the function
     def self.find_function f
       if info = self.data.find_method2("#{f.to_s}")
         return info
@@ -811,8 +853,8 @@ module GirFFI
         def set s,pt
           GObject::Lib.g_object_set self.to_ptr,"#{s}",pt,nil.to_ptr
         end      
-      
-        def signal_connect s,&b
+        
+        def signal_connect_data s,&b
           signature = self.class.get_signal_signature(s)
           params = signature.first
           result = signature.last
@@ -830,6 +872,10 @@ module GirFFI
           
           GObject::Lib::invoke_function(:g_signal_connect_data,self.to_ptr,s,cb,nil,nil,nil)
         end
+    
+        def signal_connect s,&b
+          signal_connect_data s,&b
+        end        
       end   
     end
   }
