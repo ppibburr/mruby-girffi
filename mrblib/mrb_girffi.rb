@@ -1,7 +1,52 @@
 module GirFFI
-  DEBUG = {:VERBOSE => false}
+  DEBUG = {:VERBOSE => true}
   
   REPO = GObjectIntrospection::IRepository.default
+
+  module MethodInfo
+    def name
+      @info.name
+    end
+  
+    def info
+      @info
+    end
+  
+    def arity
+      info = self.info.prep_arguments()
+      min,max = info.reverse[0..1].reverse
+      
+      if min < max
+        return min * -1
+      end
+      
+      return min
+    end
+    
+    def throws?()
+      info = self.info.prep_arguments()
+      !!info[8]
+    end
+    
+    def takes_block?
+      info = self.info.prep_arguments()
+      !!info[10]
+    end
+    
+    def out_parameters?()
+      info = self.info.prep_arguments()
+      !(info[3].empty?)
+    end
+    
+    def inout_parameters?()
+      info = self.info.prep_arguments()
+      !info[4].empty?   
+    end
+    
+    def signature
+      self.info.get_signature()
+    end
+  end
 
   module Data
     module HasFunctions
@@ -39,39 +84,31 @@ module GirFFI
     end
     
     module Callable
-      # Implements varargs, auto out|inout pointers, errors, conversion of arrays to pointer, auto handling of data and destroy notify
-      #
-      # Take `g_object_signal_connect_data(instance, name, callback, data, destroy, error)`
-      # the result is that this is allowed: 
-      #
-      # aGtkButton.signal_connect_data("clicked") do |widget,data|
-      #     p :in_callback 
-      # end
-      #
-      # @return Array<Array<the full arguments to pass to function>, Array<inouts>, Array<outs>, Array<return_values>, FFI::Pointer the error or nil> 
-      def ruby_style_arguments *passed, &b
+      def prep_arguments
         p [:prep_callable, symbol] if GirFFI::DEBUG[:VERBOSE]
         
-        optionals = {} # optional arguments
-        nulls     = {} # arguments that accept null
-        dropped   = {} # arguments that may be removed for ruby style
-        outs      = {} # out parameters
-        inouts    = {} # inout parameters
-        arrays    = {} # array parameters
+        returns = [
+          optionals = {}, # optional arguments
+          nulls     = {}, # arguments that accept null
+          dropped   = {}, # arguments that may be removed for ruby style
+          outs      = {}, # out parameters
+          inouts    = {}, # inout parameters
+          arrays    = {}, # array parameters
+          
+          callbacks = [], # callbacks
+          
+          return_values = [], # arguments to pe returned as the result of calling the function
+          
+          has_cb      = false, # indicates if we accept block b
+          has_destroy = false, # indicates it acepts a destroy notify callback
+          has_error   = false, # indicates if we should raise
+          
+          args_ = args(),
+          
+          idx = {} # map of full args to ruby style arguments indices
+        ]
         
-        callbacks = [] # callbacks
-        
-        return_values = [] # arguments to pe returned as the result of calling the function
-        
-        has_cb      = false # indicates if we accept block b
-        has_destroy = false # indicates it acepts a destroy notify callback
-        has_error   = false # indicates if we should raise
-        
-        args_ = args()
-        
-        take = 0 # the number arguments to redecuced from the list in regards to dinding the ruby style argument index
-        
-        idx = {} # map of full args to ruby style arguments indices
+        take = 0 # the number arguments to redecuced from the list in regards to dinding the ruby style argument index        
         
         args_.each_with_index do |a,i|
           case a.direction
@@ -159,15 +196,51 @@ module GirFFI
           minlen = lp + 1
         end
         
+        
+        p [:arity, [:min_args,minlen], [:max_args, maxlen]]  if GirFFI::DEBUG[:VERBOSE] 
+        
+        return returns.push(minlen, maxlen)     
+      end
+      # Implements varargs, auto out|inout pointers, errors, conversion of arrays to pointer, auto handling of data and destroy notify
+      #
+      # Take `g_object_signal_connect_data(instance, name, callback, data, destroy, error)`
+      # the result is that this is allowed: 
+      #
+      # aGtkButton.signal_connect_data("clicked") do |widget,data|
+      #     p :in_callback 
+      # end
+      #
+      # @return Array<Array<the full arguments to pass to function>, Array<inouts>, Array<outs>, Array<return_values>, FFI::Pointer the error or nil> 
+      def ruby_style_arguments *passed, &b
+        optionals,     # optional arguments
+        nulls,         # arguments that accept null
+        dropped,       # arguments that may be removed for ruby style
+        outs,          # out parameters
+        inouts,        # inout parameters
+        arrays,        # array parameters
+        
+        callbacks,     # callbacks
+        
+        return_values, # arguments to pe returned as the result of calling the function
+        
+        has_cb,        # indicates if we accept block b
+        has_destroy,   # indicates it acepts a destroy notify callback
+        has_error,     # indicates if we should raise
+        args_,
+        idx,           # map of full args to ruby style arguments indices
+        minlen,        # mininum amount of args
+        maxlen =       # max amount of args
+        
+        prep_arguments()
+            
+        
         this = nil
         if method?
           this = passed[0]
           passed.shift
         end
         
-        len = passed.length
-        
-        p [[:n_passed,len], [:min_args,minlen], [:max_args, maxlen]]  if GirFFI::DEBUG[:VERBOSE]
+        len = passed.length        
         
         raise "too few arguments: #{len} for #{minlen}"   if (passed.length) < minlen
         raise "too many arguments: #{len} for #{maxlen}"  if (passed.length) > maxlen
@@ -424,6 +497,52 @@ module GirFFI
   # Base class for wrapped objects
   # Structs, Objects, structs of ObjectClass
   class GirFFI::Object
+    def self.instance_method n
+      girffi = false
+    
+      if !self.respond_to?(n)
+        info = self.find_method(n)
+        if info
+          girffi = true
+          info.get_class.bind_instance_method(n,info)
+        else
+          return nil
+        end
+      end
+      
+      caller = Proc.new() do |this,*o,&b|
+        this.send(n,*o,&b)
+      end
+      
+      if girffi
+        caller.extend GirFFI::MethodInfo
+        caller.instance_variable_set("@info", info)
+      end
+      
+      return caller    
+    end
+    
+    # Find a method
+    # if it does not already exist, we will check wether or not a
+    # GObjectIntrospection::IFunctionInfo exists for it and set up the method
+    #
+    # @param n #to_sym method name 
+    # @return Proc that will call the method
+    def method n
+      this = self
+      
+      caller = self.class.instance_method(n)
+      
+      caller.singleton_class.class_eval do
+        alias :_call_ :call
+        define_method :call do |*o,&b|
+          _call_ this,*o,&b
+        end
+      end
+      
+      return caller
+    end
+  
     def self.define_structure
       sc = NC::define_class self, :StructClass, FFI::Struct
       sc.extend GirFFI::StructClass
