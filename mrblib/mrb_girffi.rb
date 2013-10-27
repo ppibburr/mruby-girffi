@@ -379,6 +379,9 @@ module GirFFI
       elsif data.is_a?(GObjectIntrospection::ICallableInfo)
         data.type = :callable
         data.extend GirFFI::Data::Callable
+        
+      elsif data.is_a?(GObjectIntrospection::IConstantInfo)
+        data.type = :constant      
       end
 
       return data
@@ -697,9 +700,15 @@ module GirFFI
         return bind_struct(c,info)
       when :enum
         return bind_enum(c,info)
+      when :constant
+        return bind_constant c,info
       end
       
       return nil
+    end
+    
+    def bind_constant c, info
+      const_set(c, info.value)
     end
     
     def bind_struct c,info;
@@ -765,8 +774,6 @@ module GirFFI
       
       singleton_class.class_eval do
         define_method f do |*o,&b|
-          o = GirFFI::handle_passed_function_arguments(o)
-          
           f_data.call *o,&b
         end
       end
@@ -785,8 +792,10 @@ module GirFFI
     end
   end
   
-  def self.bind ns
-    if GirFFI::REPO.require(ns)
+  def self.bind ns, v=nil
+    ns = ns.to_s
+    
+    if GirFFI::REPO.require(ns, v ? v.to_s : nil)
       mod = NC.define_module(::Object,ns.to_sym)
       
       mod.class_eval do
