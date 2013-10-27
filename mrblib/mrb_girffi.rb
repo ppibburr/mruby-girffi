@@ -1,4 +1,6 @@
 module GirFFI
+  DEBUG = {:VERBOSE => false}
+  
   REPO = GObjectIntrospection::IRepository.default
 
   module Data
@@ -48,7 +50,7 @@ module GirFFI
       #
       # @return Array<Array<the full arguments to pass to function>, Array<inouts>, Array<outs>, Array<return_values>, FFI::Pointer the error or nil> 
       def ruby_style_arguments *passed, &b
-        p [:prep_callable, symbol]
+        p [:prep_callable, symbol] if GirFFI::DEBUG[:VERBOSE]
         
         optionals = {} # optional arguments
         nulls     = {} # arguments that accept null
@@ -165,7 +167,7 @@ module GirFFI
         
         len = passed.length
         
-        p [[:n_passed,len], [:min_args,minlen], [:max_args, maxlen]]
+        p [[:n_passed,len], [:min_args,minlen], [:max_args, maxlen]]  if GirFFI::DEBUG[:VERBOSE]
         
         raise "too few arguments: #{len} for #{minlen}"   if (passed.length) < minlen
         raise "too many arguments: #{len} for #{maxlen}"  if (passed.length) > maxlen
@@ -304,7 +306,7 @@ module GirFFI
         
         o, inouts, outs, return_values, error = ruby_style_arguments(*o,&b)
 
-        p [:call, symbol, [args,ret], [:error, !!error], o]
+        p [:call, symbol, [args,ret], [:error, !!error], o] if GirFFI::DEBUG[:VERBOSE]
 
         result = name_space::Lib.invoke_function(self.symbol.to_sym,*o)
        
