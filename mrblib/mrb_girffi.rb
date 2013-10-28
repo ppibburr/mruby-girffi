@@ -396,7 +396,8 @@ module GirFFI
         
         if ret.is_a?(GirFFI::StructClass);
           # return ret.new(result).wrapped()
-          GirFFI::upcast_object(result)
+          
+          return GirFFI::upcast_object(result)
         end
         
         return result
@@ -747,7 +748,7 @@ module GirFFI
       end
       
       ft = pi.property_type.get_ffi_type
-
+      return nil if pt.get_pointer(0).is_null?
       return pt.get_pointer(0).send("read_#{ft}")
     end
   
@@ -762,6 +763,7 @@ module GirFFI
   
     def self.get_signal_signature s
       signature = [[],:void]
+      return signature if s.to_s.split("::").length > 1
 
       if info = find_signal(s)
         signature = info.get_signature
@@ -776,6 +778,7 @@ module GirFFI
     def invoke_function sym,*o,&b
       o = o.map do |q|
         if q.respond_to?(:to_ptr)
+          p q.to_ptr,987
           next q.to_ptr
         end
         
@@ -790,7 +793,7 @@ module GirFFI
         q
       end
       
-      
+      p o
       result=send sym,*o,&b    
     end
   end
