@@ -15,7 +15,10 @@ wv.signal_connect "notify::load-status" do |*o|
   case wv.get_load_status
   when WebKit::LoadStatus::FINISHED
     doc = wv.get_main_frame.get_dom_document
-    doc.get_elements_by_tag_name("body").item(0).set_inner_text "mruby!"
+    body = doc.get_elements_by_tag_name("body").item(0)
+    div = doc.create_element('div')
+    div.set_inner_text "mruby!"
+    body.append_child div
   end
 end
 
