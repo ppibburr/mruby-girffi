@@ -14,11 +14,21 @@ wv.load_html_string "<html><body></body></html>",nil
 wv.signal_connect "notify::load-status" do |*o|
   case wv.get_load_status
   when WebKit::LoadStatus::FINISHED
-    doc = wv.get_main_frame.get_dom_document
-    body = doc.get_elements_by_tag_name("body").item(0)
-    div = doc.create_element('div')
-    div.set_inner_text "mruby!"
+    doc       = wv.get_main_frame.get_dom_document
+    window    = doc.get_default_view
+    node_list = doc.get_elements_by_tag_name("body")
+    body      = node_list.item(0)
+    div       = doc.create_element('div')
+    
+    div.set_inner_text "Click me..."
+
     body.append_child div
+    
+    div.add_event_listener("click",true) do |target_, event|
+      window.alert("OUCH!")
+    end
+    
+    p w.class.ancestors
   end
 end
 
