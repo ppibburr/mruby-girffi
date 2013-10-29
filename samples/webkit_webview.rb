@@ -1,4 +1,7 @@
-Gtk::init
+GirFFI::setup :Gtk
+GirFFI::setup :WebKit
+
+Gtk::init 0,nil
 
 w = Gtk::Window::new(:toplevel)
 vb = Gtk::VBox.new(0,false)

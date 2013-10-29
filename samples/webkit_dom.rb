@@ -1,4 +1,6 @@
-GirFFI::bind(:WebKit,3.0)
+GirFFI::setup(:WebKit,3.0)
+GirFFI::setup(:Gtk)
+
 Gtk::init 0,nil
 
 wv = WebKit::WebView.new

@@ -954,6 +954,10 @@ p ffi_invoker
       ffi_lib "#{ln}"
     end
     
+    if self.respond_to?(m="#{ns}".to_sym)
+      send m
+    end
+    
     return mod
   end
 
@@ -1005,6 +1009,37 @@ module GObject
 
     def signal_connect s,&b
       signal_connect_data s,&b
+    end
+  end
+end
+
+# Convienience method to implement Gtk::Object on Gtk versions < 3.0.
+# Called if `Gtk` is to be setup 
+def GirFFI.Gtk()
+  version = GirFFI::REPO.get_version("Gtk").split(".").first.to_i
+  ::Gtk.const_missing(:Object) if version < 3
+end
+
+# Implement WebKit::DOMEventTarget#add_event_listener on WebKit versions > 1.0
+# Called if `WebKit` is to be setup 
+def GirFFI.WebKit()
+  version = GirFFI::REPO.get_version("WebKit").split(".").first.to_i
+  
+  if version > 1
+    WebKit::Lib.attach_function :webkit_dom_event_target_add_event_listener, [:pointer,:string,:pointer,:bool,:pointer], :bool
+        
+    mod = WebKit::DOMEventTarget
+    mod.class_eval do
+      define_method :add_event_listener do |name,bubble,&b|
+        GirFFI::CB << cb=FFI::Closure.new([GObject::Object::StructClass,GObject::Object::StructClass],:void) do |*o|
+          o = o.map do |q|
+            GirFFI::upcast_object(q)
+          end
+          b.call *o
+        end
+
+        WebKit::Lib.webkit_dom_event_target_add_event_listener(self.to_ptr,name,cb,bubble,nil.to_ptr)
+      end
     end
   end
 end

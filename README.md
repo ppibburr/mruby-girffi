@@ -36,17 +36,15 @@ Data:
 Example
 ===
 ```ruby
-## The next line would force Gtk version 2.0 to be used
-## on systems with both libgtk-3.0 and 2.0
-## NOTE: Gtk version 3.0 works just fine :D
-# GirFFI::require(:Gtk,2.0)
-Gtk::init(0,nil)
+GirFFI.setup :Gtk #, [2.0, 3.0][1] # specify a version
 
-w = Gtk::Window.new(0)
-w.add b=Gtk::Button.new_with_label("MRuby!!")
+Gtk::init(1,["MRuby-GirFFI Application"])
 
-b.signal_connect "clicked" do
-  Gtk.main_quit
+w = Gtk::Window.new(Gtk::WindowType::TOPLEVEL)
+w.add b=Gtk::Button.new_from_stock(Gtk::STOCK_QUIT)
+
+b.signal_connect "clicked" do |widget, data_always_nil|
+  Gtk::main_quit
 end
 
 w.show_all()
