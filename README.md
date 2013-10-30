@@ -58,6 +58,17 @@ Features
 * Ruby style method invokation. `(self, string_required, may_be_null, callback, out_param)` becomes `(string, *o, &b)`.
 * Instantly write applications using the latest GObject based libraries. (nightly builds, even your own, if you compile your own typelibs)
 
+Cons
+===
+* A slight smell of `C` is left over
+* Differences compared to the CRuby Gtk2 official bindings (method arguments order may differ. Constant naming conventions may differ)
+
+TODO
+===
+* Makes no attempt to manage memory  
+  Some will be implemented, but limited to instructions in typelibs.
+
+
 Authors
 ===
 ppibburr tulnor33@gmail.com
