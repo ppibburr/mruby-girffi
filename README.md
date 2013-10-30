@@ -55,7 +55,7 @@ Gtk::main()
 Features
 ===
 * Built in enhancements for `GObject`, `Gtk` and `WebKit`
-* Ruby style method invokation. (self, string_required, may_be_null, callback, out_param) becomes (string, *o, &b).
+* Ruby style method invokation. `(self, string_required, may_be_null, callback, out_param)` becomes `(string, *o, &b)`.
 * Instantly write applications using the latest GObject based libraries. (nightly builds, even your own, if you compile your own typelibs)
 
 Authors
