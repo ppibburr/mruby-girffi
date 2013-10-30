@@ -1,0 +1,515 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>
+  Module: GirFFI::Builder::ObjectBuilder::Interface
+  
+    &mdash; Documentation by YARD 0.8.6.1
+  
+</title>
+
+  <link rel="stylesheet" href="../../../css/style.css" type="text/css" charset="utf-8" />
+
+  <link rel="stylesheet" href="../../../css/common.css" type="text/css" charset="utf-8" />
+
+<script type="text/javascript" charset="utf-8">
+  hasFrames = window.top.frames.main ? true : false;
+  relpath = '../../../';
+  framesUrl = "../../../frames.html#!" + escape(window.location.href);
+</script>
+
+
+  <script type="text/javascript" charset="utf-8" src="../../../js/jquery.js"></script>
+
+  <script type="text/javascript" charset="utf-8" src="../../../js/app.js"></script>
+
+
+  </head>
+  <body>
+    <div id="header">
+      <div id="menu">
+  
+    <a href="../../../_index.html">Index (I)</a> &raquo;
+    <span class='title'><span class='object_link'><a href="../../../GirFFI.html" title="GirFFI (module)">GirFFI</a></span></span> &raquo; <span class='title'><span class='object_link'><a href="../../Builder.html" title="GirFFI::Builder (module)">Builder</a></span></span> &raquo; <span class='title'><span class='object_link'><a href="../ObjectBuilder.html" title="GirFFI::Builder::ObjectBuilder (module)">ObjectBuilder</a></span></span>
+     &raquo; 
+    <span class="title">Interface</span>
+  
+
+  <div class="noframes"><span class="title">(</span><a href="." target="_top">no frames</a><span class="title">)</span></div>
+</div>
+
+      <div id="search">
+  
+    <a class="full_list_link" id="class_list_link"
+        href="../../../class_list.html">
+      Class List
+    </a>
+  
+    <a class="full_list_link" id="method_list_link"
+        href="../../../method_list.html">
+      Method List
+    </a>
+  
+    <a class="full_list_link" id="file_list_link"
+        href="../../../file_list.html">
+      File List
+    </a>
+  
+</div>
+      <div class="clear"></div>
+    </div>
+
+    <iframe id="search_frame"></iframe>
+
+    <div id="content"><h1>Module: GirFFI::Builder::ObjectBuilder::Interface
+  
+  
+  
+</h1>
+
+<dl class="box">
+  
+  
+    
+  
+    
+      <dt class="r1">Includes:</dt>
+      <dd class="r1"><span class='object_link'><a href="HasData.html" title="GirFFI::Builder::ObjectBuilder::HasData (module)">HasData</a></span></dd>
+      
+    
+  
+  
+    <dt class="r2">Included in:</dt>
+    <dd class="r2"><span class='object_link'><a href="IsGObjectObject.html" title="GirFFI::Builder::ObjectBuilder::IsGObjectObject (class)">IsGObjectObject</a></span></dd>
+    
+  
+  
+    <dt class="r1 last">Defined in:</dt>
+    <dd class="r1 last">mrb_girffi.rb</dd>
+  
+</dl>
+<div class="clear"></div>
+
+<h2>Overview</h2><div class="docstring">
+  <div class="discussion">
+    
+<p>Framework for implementing GObject::Object and derivatives.</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+
+</div><h2>Defined Under Namespace</h2>
+<p class="children">
+  
+    
+      <strong class="modules">Modules:</strong> <span class='object_link'><a href="Interface/Implemented.html" title="GirFFI::Builder::ObjectBuilder::Interface::Implemented (module)">Implemented</a></span>
+    
+  
+    
+  
+</p>
+
+
+
+
+
+
+
+  
+    <h2>
+      Instance Method Summary
+      <small>(<a href="#" class="summary_toggle">collapse</a>)</small>
+    </h2>
+
+    <ul class="summary">
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#girffi_instance_method-instance_method" title="#girffi_instance_method (instance method)">- (Proc) <strong>girffi_instance_method</strong>(n) </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Finds an instance method, including ones being wrapped Performs proper
+inheritance.</p>
+</div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#girffi_instance_methods-instance_method" title="#girffi_instance_methods (instance method)">- (Array) <strong>girffi_instance_methods</strong> </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Gets the instance methods for instances, including those being wrapped
+Performs proper inheritance.</p>
+</div></span>
+  
+</li>
+
+      
+        <li class="public ">
+  <span class="summary_signature">
+    
+      <a href="#implements-instance_method" title="#implements (instance method)">- (Array) <strong>implements</strong> </a>
+    
+
+    
+  </span>
+  
+  
+  
+  
+  
+  
+  
+
+  
+    <span class="summary_desc"><div class='inline'>
+<p>Of the interfaces implemented, this includes classes as well as modules.</p>
+</div></span>
+  
+</li>
+
+      
+    </ul>
+  
+
+
+  
+  
+  
+  
+  
+  
+  
+  
+  <h3 class="inherited">Methods included from <span class='object_link'><a href="HasData.html" title="GirFFI::Builder::ObjectBuilder::HasData (module)">HasData</a></span></h3>
+  <p class="inherited"><span class='object_link'><a href="HasData.html#data-instance_method" title="GirFFI::Builder::ObjectBuilder::HasData#data (method)">#data</a></span></p>
+
+
+  <div id="instance_method_details" class="method_details_list">
+    <h2>Instance Method Details</h2>
+
+    
+      <div class="method_details first">
+  <h3 class="signature first" id="girffi_instance_method-instance_method">
+  
+    - (<tt>Proc</tt>) <strong>girffi_instance_method</strong>(n) 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Finds an instance method, including ones being wrapped Performs proper
+inheritance</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  <p class="tag_title">Parameters:</p>
+<ul class="param">
+  
+    <li>
+      
+        <span class='name'>n</span>
+      
+      
+        <span class='type'>(<tt>Symbol</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'>
+<p>method name</p>
+</div>
+      
+    </li>
+  
+</ul>
+
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Proc</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'>
+<p>that accepts a self argument, parameters and block</p>
+</div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+552
+553
+554
+555
+556
+557
+558
+559
+560
+561
+562
+563
+564
+565
+566
+567
+568
+569
+570
+571
+572
+573
+574</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'mrb_girffi.rb', line 552</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_girffi_instance_method'>girffi_instance_method</span> <span class='id identifier rubyid_n'>n</span>
+  <span class='id identifier rubyid_have'>have</span> <span class='op'>=</span> <span class='kw'>nil</span>
+  <span class='kw'>if</span> <span class='op'>!</span><span class='lparen'>(</span><span class='id identifier rubyid_info'>info</span><span class='op'>=</span><span class='id identifier rubyid_find_function'>find_function</span><span class='lparen'>(</span><span class='id identifier rubyid_n'>n</span><span class='rparen'>)</span><span class='rparen'>)</span>
+    <span class='id identifier rubyid_ancestors'>ancestors</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_a'>a</span><span class='op'>|</span>
+      <span class='kw'>if</span> <span class='id identifier rubyid_a'>a</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>GirFFI</span><span class='op'>::</span><span class='const'>Builder</span><span class='op'>::</span><span class='const'>ObjectBuilder</span><span class='op'>::</span><span class='const'>Interface</span><span class='rparen'>)</span>
+        <span class='kw'>if</span> <span class='lparen'>(</span><span class='id identifier rubyid_a'>a</span> <span class='op'>!=</span> <span class='const'>GirFFI</span><span class='op'>::</span><span class='const'>Builder</span><span class='op'>::</span><span class='const'>ObjectBuilder</span><span class='op'>::</span><span class='const'>IsGObjectObject</span><span class='rparen'>)</span> <span class='kw'>and</span> <span class='id identifier rubyid_info'>info</span> <span class='op'>=</span> <span class='id identifier rubyid_a'>a</span><span class='period'>.</span><span class='id identifier rubyid_find_function'>find_function</span><span class='lparen'>(</span><span class='id identifier rubyid_n'>n</span><span class='rparen'>)</span>
+          <span class='id identifier rubyid_a'>a</span><span class='period'>.</span><span class='id identifier rubyid_bind_instance_method'>bind_instance_method</span> <span class='id identifier rubyid_n'>n</span><span class='comma'>,</span> <span class='id identifier rubyid_info'>info</span>
+          <span class='id identifier rubyid_have'>have</span> <span class='op'>=</span> <span class='kw'>true</span>
+          <span class='kw'>break</span>
+        <span class='kw'>end</span>
+      <span class='kw'>end</span>
+    <span class='kw'>end</span>
+  <span class='kw'>else</span>
+    <span class='id identifier rubyid_have'>have</span> <span class='op'>=</span> <span class='kw'>true</span>
+    <span class='id identifier rubyid_bind_instance_method'>bind_instance_method</span><span class='lparen'>(</span><span class='id identifier rubyid_n'>n</span><span class='comma'>,</span><span class='id identifier rubyid_info'>info</span><span class='rparen'>)</span>
+  <span class='kw'>end</span>
+  
+  <span class='kw'>return</span> <span class='kw'>nil</span> <span class='kw'>unless</span> <span class='id identifier rubyid_have'>have</span>
+  
+  <span class='kw'>return</span> <span class='lparen'>(</span><span class='const'>Proc</span><span class='period'>.</span><span class='id identifier rubyid_new'>new</span><span class='lparen'>(</span><span class='rparen'>)</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_this'>this</span><span class='comma'>,</span><span class='op'>*</span><span class='id identifier rubyid_o'>o</span><span class='comma'>,</span><span class='op'>&amp;</span><span class='id identifier rubyid_b'>b</span><span class='op'>|</span>
+    <span class='id identifier rubyid_this'>this</span><span class='period'>.</span><span class='id identifier rubyid_send'>send</span> <span class='id identifier rubyid_n'>n</span><span class='comma'>,</span> <span class='op'>*</span><span class='id identifier rubyid_o'>o</span><span class='comma'>,</span> <span class='op'>&amp;</span><span class='id identifier rubyid_b'>b</span>
+  <span class='kw'>end</span><span class='rparen'>)</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="girffi_instance_methods-instance_method">
+  
+    - (<tt>Array</tt>) <strong>girffi_instance_methods</strong> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Gets the instance methods for instances, including those being wrapped
+Performs proper inheritance</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'>
+<p>of method names</p>
+</div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+523
+524
+525
+526
+527
+528
+529
+530
+531
+532
+533
+534
+535
+536
+537
+538
+539
+540
+541
+542
+543
+544
+545</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'mrb_girffi.rb', line 523</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_girffi_instance_methods'>girffi_instance_methods</span>
+  <span class='id identifier rubyid_data'>data</span><span class='period'>.</span><span class='id identifier rubyid_get_methods'>get_methods</span><span class='period'>.</span><span class='id identifier rubyid_find_all'>find_all</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_m'>m</span><span class='op'>|</span> <span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_method?'>method?</span> <span class='kw'>end</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_m'>m</span><span class='op'>|</span>
+    <span class='comment'># Stub
+</span>    <span class='id identifier rubyid_define_method'>define_method</span> <span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_name'>name</span> <span class='kw'>do</span> <span class='op'>|</span><span class='op'>*</span><span class='id identifier rubyid_o'>o</span><span class='comma'>,</span><span class='op'>&amp;</span><span class='id identifier rubyid_b'>b</span><span class='op'>|</span>
+      <span class='kw'>self</span><span class='period'>.</span><span class='id identifier rubyid_class'>class</span><span class='period'>.</span><span class='id identifier rubyid_girffi_instance_method'>girffi_instance_method</span><span class='lparen'>(</span><span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_name'>name</span><span class='rparen'>)</span>
+      
+      <span class='kw'>next</span> <span class='id identifier rubyid_send'>send</span><span class='lparen'>(</span><span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_name'>name</span><span class='period'>.</span><span class='id identifier rubyid_to_sym'>to_sym</span><span class='comma'>,</span> <span class='op'>*</span><span class='id identifier rubyid_o'>o</span><span class='comma'>,</span> <span class='op'>&amp;</span><span class='id identifier rubyid_b'>b</span><span class='rparen'>)</span>
+    <span class='kw'>end</span> <span class='kw'>unless</span> <span class='id identifier rubyid_instance_methods'>instance_methods</span><span class='period'>.</span><span class='id identifier rubyid_index'>index</span><span class='lparen'>(</span><span class='id identifier rubyid_m'>m</span><span class='period'>.</span><span class='id identifier rubyid_name'>name</span><span class='period'>.</span><span class='id identifier rubyid_to_sym'>to_sym</span><span class='rparen'>)</span>
+  <span class='kw'>end</span>
+  
+  <span class='kw'>unless</span> <span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>GirFFI</span><span class='op'>::</span><span class='const'>Builder</span><span class='op'>::</span><span class='const'>ObjectBuilder</span><span class='op'>::</span><span class='const'>Interface</span><span class='rparen'>)</span> <span class='kw'>and</span> <span class='id identifier rubyid_data'>data</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>GObjectIntrospection</span><span class='op'>::</span><span class='const'>IInterfaceInfo</span><span class='rparen'>)</span>
+    <span class='id identifier rubyid_ancestors'>ancestors</span><span class='period'>.</span><span class='id identifier rubyid_find_all'>find_all</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_a'>a</span><span class='op'>|</span> <span class='id identifier rubyid_a'>a</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>Interface</span><span class='rparen'>)</span> <span class='kw'>and</span> <span class='id identifier rubyid_a'>a</span><span class='period'>.</span><span class='id identifier rubyid_data'>data</span><span class='period'>.</span><span class='id identifier rubyid_is_a?'>is_a?</span><span class='lparen'>(</span><span class='const'>GObjectIntrospection</span><span class='op'>::</span><span class='const'>IInterfaceInfo</span><span class='rparen'>)</span> <span class='kw'>end</span><span class='period'>.</span><span class='id identifier rubyid_each'>each</span> <span class='kw'>do</span> <span class='op'>|</span><span class='id identifier rubyid_a'>a</span><span class='op'>|</span>
+      <span class='id identifier rubyid_a'>a</span><span class='period'>.</span><span class='id identifier rubyid_girffi_instance_methods'>girffi_instance_methods</span><span class='lparen'>(</span><span class='rparen'>)</span>
+    <span class='kw'>end</span>
+  <span class='kw'>end</span>
+  
+  <span class='kw'>begin</span>
+    <span class='kw'>super</span><span class='lparen'>(</span><span class='rparen'>)</span>
+  <span class='kw'>rescue</span>
+  <span class='kw'>end</span>
+  
+  <span class='kw'>return</span> <span class='id identifier rubyid_instance_methods'>instance_methods</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+      <div class="method_details ">
+  <h3 class="signature " id="implements-instance_method">
+  
+    - (<tt>Array</tt>) <strong>implements</strong> 
+  
+
+  
+
+  
+</h3><div class="docstring">
+  <div class="discussion">
+    
+<p>Of the interfaces implemented, this includes classes as well as modules</p>
+
+
+  </div>
+</div>
+<div class="tags">
+  
+<p class="tag_title">Returns:</p>
+<ul class="return">
+  
+    <li>
+      
+      
+        <span class='type'>(<tt>Array</tt>)</span>
+      
+      
+      
+        &mdash;
+        <div class='inline'>
+<p>of the interfaces implemented, this includes classes as well as modules</p>
+</div>
+      
+    </li>
+  
+</ul>
+
+</div><table class="source_code">
+  <tr>
+    <td>
+      <pre class="lines">
+
+
+515
+516
+517</pre>
+    </td>
+    <td>
+      <pre class="code"><span class="info file"># File 'mrb_girffi.rb', line 515</span>
+
+<span class='kw'>def</span> <span class='id identifier rubyid_implements'>implements</span>
+  <span class='id identifier rubyid_data'>data</span><span class='period'>.</span><span class='id identifier rubyid_interfaces'>interfaces</span>
+<span class='kw'>end</span></pre>
+    </td>
+  </tr>
+</table>
+</div>
+    
+  </div>
+
+</div>
+
+    <div id="footer">
+  Generated on Tue Oct 29 20:02:12 2013 by
+  <a href="http://yardoc.org" title="Yay! A Ruby Documentation Tool" target="_parent">yard</a>
+  0.8.6.1 (ruby-1.9.3).
+</div>
+
+  </body>
+</html>

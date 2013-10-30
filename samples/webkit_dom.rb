@@ -9,7 +9,7 @@ w = Gtk::Window.new(:toplevel)
 w.add vb=Gtk::VBox.new(false,5)
 vb.add sw=Gtk::ScrolledWindow.new(nil,nil)
 sw.add wv
-sw.set_policy Gtk::PolicyType::AUTOMATIC, Gtk::PolicyType::AUTOMATIC
+sw.set_policy Gtk::PolicyType::AUTOMATIC, :automatic
 
 wv.load_html_string "<html><body></body></html>",nil
 

@@ -544,6 +544,18 @@ module GirFFI
           return instance_methods
         end
         
+        # Finds a function in the info being wrapped ONLY
+        #
+        # @param f [#to_s] the name of the function
+        # @return GObjectIntrospection::IFunctionInfo
+        def find_function f
+          if m_data=data.get_methods.find do |m| m.name == f.to_s end
+            m_data.extend GirFFI::Builder::MethodBuilder::Function
+
+            return m_data
+          end
+        end        
+        
         # Finds an instance method, including ones being wrapped
         # Performs proper inheritance
         #
@@ -846,7 +858,7 @@ module GirFFI
           args, ret = data.get_signature 
 
           ffi_invoker = self::Lib.attach_function data.symbol.to_sym,args,ret
-p ffi_invoker
+
           return ffi_invoker
         end
         
@@ -937,7 +949,7 @@ p ffi_invoker
   def self.setup ns, v = nil
     v = v.to_s if v
     
-    REPO.require(ns.to_s, v)
+    raise "No Introspection typelib found for #{ns.to_s+(v ? " - #{v}": "")}" if REPO.require(ns.to_s, v).is_null?
     
     mod = NC::define_module(::Object, ns.to_sym)
     
@@ -1016,6 +1028,14 @@ end
 # Convienience method to implement Gtk::Object on Gtk versions < 3.0.
 # Called if `Gtk` is to be setup 
 def GirFFI.Gtk()
+  unless ::Object.const_defined?(:Gdk)
+    GirFFI.setup(:Gdk)
+  end
+  
+  unless ::Object.const_defined?(:Atk)
+    GirFFI.setup(:Atk)
+  end  
+
   version = GirFFI::REPO.get_version("Gtk").split(".").first.to_i
   ::Gtk.const_missing(:Object) if version < 3
 end
@@ -1023,6 +1043,14 @@ end
 # Implement WebKit::DOMEventTarget#add_event_listener on WebKit versions > 1.0
 # Called if `WebKit` is to be setup 
 def GirFFI.WebKit()
+  unless ::Object.const_defined?(:Gtk)
+    GirFFI.setup(:Gtk)
+  end
+  
+  unless ::Object.const_defined?(:Soup)
+    GirFFI.setup(:Soup)
+  end  
+
   version = GirFFI::REPO.get_version("WebKit").split(".").first.to_i
   
   if version > 1
