@@ -123,6 +123,7 @@ module GirFFI
             minlen = lp + 1
           end
           
+          minlen = minlen-outs.length
           
           p [:arity, [:min_args,minlen], [:max_args, maxlen]]  if GirFFI::DEBUG[:VERBOSE] 
           
@@ -249,7 +250,7 @@ module GirFFI
         # @return Array of [Array<argument_types>, return_type]
         def get_signature
           params = args.map do |a|
-            if a.direction == :inout
+            if [:inout,:out].index(a.direction)
               next :pointer
             end
           
@@ -299,19 +300,55 @@ module GirFFI
           
           o, inouts, outs, return_values, error = ruby_style_arguments(*o,&b)
 
-          p [:call, symbol, [args,ret], [:error, !!error], o] if GirFFI::DEBUG[:VERBOSE]
+          p [:call, symbol, [args,ret], return_values, [:error, !!error], o] if GirFFI::DEBUG[:VERBOSE]
 
           ns = ::Object.const_get(namespace.to_sym)
 
           result = ns::Lib.invoke_function(self.symbol.to_sym,*o)
          
           raise "error" if error and !error.get_pointer(0).is_null?
+         
+          returns = outs.keys.sort.map do |i|
+            info = outs[i]
+            i += 1 if method?
+            ptr = o[i]
+            
+            if t=info.argument_type.flattened_tag == :object
+              cls = ::Object.const_get(ns=info.argument_type.interface.namespace.to_sym).const_get(n=info.argument_type.interface.name.to_sym)
+              next(GirFFI::upcast_object(ptr))
+              
+            elsif info.argument_type.tag == :array
+              if info.argument_type.zero_terminated?
+                ary = []
+                
+                offset = 0
+                
+                type = info.argument_type.element_type
+                
+                while !(ptr=ptr.get_pointer(offset)).is_null?
+                  ary << ptr.send("read_#{type}")
+                end
+                
+                next ary
+                
+              else
+                ary = ptr.send("read_array_of_#{type}", info.argument_type.array_length)
+                next ary
+              end
+              
+            else
+              type = info.get_ffi_type
+              next ptr.send("read_#{type}")
+            end
+          end
+          
+          returns << result unless ret == :void
           
           if ret.is_a?(GirFFI::Builder::ObjectBuilder::StructClass);
             return GirFFI::upcast_object(result)
           end
           
-          return result
+          return returns.reverse
         end
       end
       
