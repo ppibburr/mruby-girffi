@@ -22,7 +22,7 @@ module GirFFI
             inouts    = {}, # inout parameters
             arrays    = {}, # array parameters
             
-            callbacks = [], # callbacks
+            callbacks = {}, # callbacks
             
             return_values = [], # arguments to pe returned as the result of calling the function
             
@@ -63,17 +63,17 @@ module GirFFI
               dropped[i] = a
             end
             
-            if data = a.closure >= 0
+            if (data = a.closure) >= 0
               (has_cb = [a, args_[data]])
-              callbacks.push(i,data)
+              callbacks[i] = data
               dropped[i] = a
               take += 1
               next
             end
             
-            if data = a.destroy >= 0
+            if (data = a.destroy) >= 0
               has_destroy = [a, args_[data]]
-              callbacks.push(i,data)
+              callbacks[i] = data
               dropped[i] = a
               take += 1
               next
@@ -124,6 +124,8 @@ module GirFFI
           end
           
           minlen = minlen-outs.length
+          
+          minlen = minlen - (callbacks.keys.length)
           
           p [:arity, [:min_args,minlen], [:max_args, maxlen]]  if GirFFI::DEBUG[:VERBOSE] 
           
@@ -234,6 +236,13 @@ module GirFFI
             result[q] = FFI::MemoryPointer.new(:pointer)
           end
           
+          callbacks.keys.sort.each do |i|
+            info = arg(i).argument_type.interface
+            info.extend GirFFI::Builder::MethodBuilder::Callable
+            
+            result[i] = info.make_closure(&b)
+          end            
+          
           if this
             result = [this].push(*result)
           end
@@ -270,6 +279,10 @@ module GirFFI
             
             # not enum
             q = a.get_ffi_type()
+            
+            q = :pointer if q == :void
+            
+            next q
           end
           
           if self.respond_to?(:"method?") and method?
@@ -284,6 +297,23 @@ module GirFFI
           end
 
           return params,ret
+        end
+        
+        def make_closure &b
+          FFI::Closure.new(*(sig=get_signature)) do |*o|
+            i = -1
+            o = o.map do |q|
+              i += 1
+                
+              if sig[0][i].is_a?(GirFFI::Builder::ObjectBuilder::StructClass)
+                next GirFFI.upcast_object(q)
+              end
+                
+              next q
+            end
+             
+            b.call(*o)
+          end        
         end
       end
     
@@ -318,15 +348,25 @@ module GirFFI
               next(GirFFI::upcast_object(ptr))
               
             elsif info.argument_type.tag == :array
-              if info.argument_type.zero_terminated?
+              if (len=info.argument_type.array_length) > 0
+                type = info.argument_type.element_type
+                ary = ptr.send "read_array_of_#{type}", len
+              
+                next(ary)
+              
+              elsif info.argument_type.zero_terminated?
                 ary = []
                 
                 offset = 0
                 
                 type = info.argument_type.element_type
+                raise("GirFFI - Unimplemented: ZERO TERMINATED ARRAY")
+                size = 8 # FIXME get pointer size
                 
-                while !(ptr=ptr.get_pointer(offset)).is_null?
-                  ary << ptr.send("read_#{type}")
+                
+                while !(qptr=ptr.get_pointer(offset)).is_null?
+                  ary << qptr.send("read_#{type}")
+                  offset += size
                 end
                 
                 next ary
@@ -726,15 +766,8 @@ module GirFFI
           return nil
         end
       
-        def self.get_signal_signature s
-          signature = [[],:void]
-          return signature if s.to_s.split("::").length > 1
-
-          if info = find_signal(s)
-            signature = info.get_signature
-          end
-        
-          return signature
+        def self.get_signal(s)
+          return find_signal s
         end
       end
 
@@ -1038,20 +1071,9 @@ module GObject
     end      
     
     def signal_connect_data s,&b
-      signature = self.class.get_signal_signature(s)
-      params = signature.first
-      result = signature.last
+      signal = self.class.get_signal s
 
-      GirFFI::CB << cb = FFI::Closure.new(*signature) do |*o|
-        o.each_with_index do |prm,i|
-          if params[i].is_a?(GirFFI::Builder::ObjectBuilder::StructClass)
-            o[i] = GirFFI::upcast_object(o[i])
-          end
-        end
-       
-        
-        b.call(*o)
-      end
+      GirFFI::CB << cb = signal ? signal.make_closure(&b) : FFI::Closure.new([],:void, &b)
       
       GObject::Lib::invoke_function(:g_signal_connect_data,self.to_ptr,s,cb,nil,nil,nil)
     end
