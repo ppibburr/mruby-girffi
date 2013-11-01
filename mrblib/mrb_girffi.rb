@@ -9,6 +9,53 @@ module GirFFI
 
   # Handles building bindings
   module Builder
+    module Value
+      def get_ruby_value(ptr)
+        return ptr unless ptr.is_a?(FFI::Pointer)
+      
+        if flattened_tag == :object
+          cls = ::Object.const_get(ns=interface.namespace.to_sym).const_get(n=interface.name.to_sym)
+          return(GirFFI::upcast_object(ptr))
+          
+        elsif tag == :array
+          if (len=array_length) > 0
+            type = element_type
+            ary = ptr.send "read_array_of_#{type}", len
+          
+            return(ary)
+          
+          elsif zero_terminated?
+            ary = []
+            
+            offset = 0
+            
+            type = element_type
+            raise("GirFFI - Unimplemented: ZERO TERMINATED ARRAY")
+            size = 8 # FIXME get pointer size
+            
+            
+            while !(qptr=ptr.get_pointer(offset)).is_null?
+              ary << qptr.send("read_#{type}")
+              offset += size
+            end
+            
+            return ary
+            
+          else
+            ary = ptr.send("read_array_of_#{type}", array_length)
+            return ary
+          end
+          
+        elsif (type = get_ffi_type) == :void
+          return nil
+        elsif (type = get_ffi_type) != :pointer
+          return ptr.send("read_#{type}")
+        end      
+        
+        return ptr
+      end
+    end
+    
     module MethodBuilder
       module Callable
         def prep_arguments
@@ -305,11 +352,10 @@ module GirFFI
             o = o.map do |q|
               i += 1
                 
-              if sig[0][i].is_a?(GirFFI::Builder::ObjectBuilder::StructClass)
-                next GirFFI.upcast_object(q)
-              end
+              info = arg(i).argument_type
+              info.extend GirFFI::Builder::Value
                 
-              next q
+              next info.get_ruby_value(q)
             end
              
             b.call(*o)
@@ -340,55 +386,30 @@ module GirFFI
          
           returns = outs.keys.sort.map do |i|
             info = outs[i]
+            
+            info = info.argument_type
+            info.extend GirFFI::Builder::Value
+            
             i += 1 if method?
             ptr = o[i]
             
-            if t=info.argument_type.flattened_tag == :object
-              cls = ::Object.const_get(ns=info.argument_type.interface.namespace.to_sym).const_get(n=info.argument_type.interface.name.to_sym)
-              next(GirFFI::upcast_object(ptr))
-              
-            elsif info.argument_type.tag == :array
-              if (len=info.argument_type.array_length) > 0
-                type = info.argument_type.element_type
-                ary = ptr.send "read_array_of_#{type}", len
-              
-                next(ary)
-              
-              elsif info.argument_type.zero_terminated?
-                ary = []
-                
-                offset = 0
-                
-                type = info.argument_type.element_type
-                raise("GirFFI - Unimplemented: ZERO TERMINATED ARRAY")
-                size = 8 # FIXME get pointer size
-                
-                
-                while !(qptr=ptr.get_pointer(offset)).is_null?
-                  ary << qptr.send("read_#{type}")
-                  offset += size
-                end
-                
-                next ary
-                
-              else
-                ary = ptr.send("read_array_of_#{type}", info.argument_type.array_length)
-                next ary
-              end
-              
-            else
-              type = info.get_ffi_type
-              next ptr.send("read_#{type}")
-            end
+            next info.get_ruby_value(ptr)
           end
+          
+          info = return_type
+          info.extend GirFFI::Builder::Value
+          
+          result = info.get_ruby_value(result)
           
           returns << result unless ret == :void
           
-          if ret.is_a?(GirFFI::Builder::ObjectBuilder::StructClass);
-            return GirFFI::upcast_object(result)
+          if returns.length == 1
+            returns = returns[0]
+          else
+            returns = returns.reverse
           end
           
-          return returns.reverse
+          return returns
         end
       end
       
