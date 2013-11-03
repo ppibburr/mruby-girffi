@@ -13,9 +13,12 @@ module GirFFI
       def get_ruby_value(ptr)
         return ptr unless ptr.is_a?(FFI::Pointer)
       
+        return nil if ptr.is_null?
+      
         if flattened_tag == :object
           cls = ::Object.const_get(ns=interface.namespace.to_sym).const_get(n=interface.name.to_sym)
-          return(GirFFI::upcast_object(ptr))
+          ins = cls.wrap(ptr)
+          return(GirFFI::upcast_object(ins))
           
         elsif tag == :array
           if (len=array_length) > 0
@@ -125,6 +128,13 @@ module GirFFI
               take += 1
               next
             end
+          
+            if a.argument_type.interface.is_a?(GObjectIntrospection::ICallbackInfo)
+              callbacks[i] = nil
+              dropped[i] = a
+              take += 1
+              next
+            end       
             
             if a.name == "error"
               dropped[i] = a
@@ -393,7 +403,7 @@ module GirFFI
             i += 1 if method?
             ptr = o[i]
             
-            next info.get_ruby_value(ptr)
+            next info.get_ruby_value(ptr.get_pointer(0))
           end
           
           info = return_type
@@ -1000,6 +1010,8 @@ module GirFFI
       
     type = GObject::Object::StructClass.new(ins)[:g_type_instance]
     
+    return nil if type.is_null?
+    
     if !type.is_a?(FFI::Pointer) and !type.is_a?(Integer)
       type = CFunc::UInt64.refer(type).value
     elsif type.is_a?(FFI::Pointer)
@@ -1024,6 +1036,8 @@ module GirFFI
   # this ensures that, in this example, an instance of Gtk::Button would be returned 
   def self.upcast_object w
     type = type_from_instance(w)
+    
+    return w if !type
       
     cls = class_from_type(type)  
     
@@ -1042,7 +1056,7 @@ module GirFFI
     
     raise "No Introspection typelib found for #{ns.to_s+(v ? " - #{v}": "")}" if REPO.require(ns.to_s, v).is_null?
     
-    mod = NC::define_module(::Object, ns.to_sym)
+    mod = NC::define_module(::Object, ns.to_s.capitalize.to_sym)
     
     mod.extend GirFFI::Builder::NameSpaceBuilder::IsNameSpace
     
