@@ -774,7 +774,18 @@ module GirFFI
         
         def get_property n
           pi = self.class.find_property(n)
-          get(n, pt=FFI::MemoryPointer.new(:pointer))
+          ft = pi.property_type.get_ffi_type  
+          
+          mrb = false
+        
+          if FFI::Pointer.instance_methods.index(:addr)
+            pt=FFI::MemoryPointer.new(:pointer)
+            mrb = true
+          else
+            pt=FFI::MemoryPointer.new(ft)
+          end        
+
+          get(n, pt)
           
           if pi.object?
             return nil if pt.get_pointer(0).is_null?
@@ -782,9 +793,15 @@ module GirFFI
             return GirFFI::upcast_object(pt.get_pointer(0))
           end
           
-          ft = pi.property_type.get_ffi_type
-          return nil if pt.get_pointer(0).is_null?
-          return pt.get_pointer(0).send("read_#{ft}")
+          if mrb
+            return nil if pt.get_pointer(0).is_null?
+          end
+          
+          if !mrb
+            return pt.send("get_#{ft}",0)
+          else
+            return pt.get_pointer(0).send("read_#{ft}")
+          end
         end
       
         def self.find_signal s
