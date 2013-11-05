@@ -3,11 +3,14 @@ GirFFI::DEBUG[:VERBOSE]=nil
 GirFFI.setup :Regress
 
 # Tests generated methods and functions in the Regress namespace.
+
 assert("Regress::Lib.include?(FFI::Library)") do
   class << Regress::Lib
     assert_include self, FFI::Library
   end
 end
+
+## Constants
 
 assert("Regress::DOUBLE_CONSTANT") do
   assert_equal 44.22, Regress::DOUBLE_CONSTANT  
@@ -38,7 +41,8 @@ assert("Regress::STRING_CONSTANT") do
   assert_equal "Some String", Regress::STRING_CONSTANT
 end
 
-# Objects
+# derived GObject::Object's class
+
 assert("Regress::TestObj.constructor") do
   obj = Regress::TestObj.constructor
   assert_kind_of Regress::TestObj, obj
@@ -81,11 +85,17 @@ assert("Regress::TestObj.static_method_callback") do
   assert_equal 2, a
 end 
 
+## derived GObject::Object's instance
+
 instance = Regress::TestObj.new_from_file("foo") 
+
+## methods
 
 assert("Regress::TestOb#do_matrix") do
   assert_equal instance.do_matrix("bar"), 42
 end
+
+## signals
 
 assert("Regress::TestObj#emit_sig_with_int64") do
   skip

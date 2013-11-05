@@ -18,7 +18,8 @@ module GirFFI
         if flattened_tag == :object
           cls = ::Object.const_get(ns=interface.namespace.to_sym).const_get(n=interface.name.to_sym)
           ins = cls.wrap(ptr)
-          return(GirFFI::upcast_object(ins))
+          p ins
+          return(GirFFI::upcast_object(ins.to_ptr))
           
         elsif tag == :array
           if (len=array_length) > 0
@@ -1073,7 +1074,7 @@ module GirFFI
     
     raise "No Introspection typelib found for #{ns.to_s+(v ? " - #{v}": "")}" if REPO.require(ns.to_s, v).is_null?
     
-    mod = NC::define_module(::Object, ns.to_s.capitalize.to_sym)
+    mod = NC::define_module(::Object, ns.to_s.to_sym)
     
     mod.extend GirFFI::Builder::NameSpaceBuilder::IsNameSpace
     
