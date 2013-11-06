@@ -11,8 +11,13 @@ module GirFFI
   module Builder
     module Value
       def get_ruby_value(ptr)
-        return ptr unless ptr.is_a?(FFI::Pointer)
-      
+        if FFI::Pointer.instance_methods.index(:addr)
+          return ptr unless ptr.is_a?(CFunc::Pointer)
+          
+          ptr = FFI::Pointer.refer(ptr) unless ptr.is_a?(FFI::Pointer)
+        else
+          return ptr unless ptr.is_a?(FFI::Pointer)
+        end
         return nil if ptr.is_null?
       
         if flattened_tag == :object
@@ -53,6 +58,7 @@ module GirFFI
         elsif (type = get_ffi_type) == :void
           return nil
         elsif (type = get_ffi_type) != :pointer
+
           return ptr.send("read_#{type}")
         end      
         
@@ -79,12 +85,13 @@ module GirFFI
             
             has_cb      = false, # indicates if we accept block b
             has_destroy = false, # indicates it acepts a destroy notify callback
-            has_error   = false, # indicates if we should raise
             
             args_ = args(),
             
             idx = {} # map of full args to ruby style arguments indices
           ]
+          
+          has_error   = false # indicates if we should raise
           
           take = 0 # the number arguments to redecuced from the list in regards to dinding the ruby style argument index        
           
@@ -137,13 +144,6 @@ module GirFFI
               next
             end       
             
-            if a.name == "error"
-              dropped[i] = a
-              has_error = i
-              take += 1
-              next
-            end
-            
             if a.return_value?
               return_values << i
             end
@@ -167,14 +167,18 @@ module GirFFI
             break()
           end
           
+          if throws?
+            has_error = true
+          end
+          
           maxlen = minlen = args.length
           
           minlen -= 1 if has_cb
           minlen -= 1 if has_destroy
-          minlen -= 1 if has_error
+         # minlen -= 1 if has_error
           
           maxlen -= 1 if has_destroy
-          maxlen -= 1 if has_error
+         # maxlen -= 1 if has_error
           maxlen -= 1 if has_cb
           
           if lp
@@ -187,7 +191,7 @@ module GirFFI
           
           p [:arity, [:min_args,minlen], [:max_args, maxlen]]  if GirFFI::DEBUG[:VERBOSE] 
           
-          return returns.push(minlen, maxlen)     
+          return returns.push(minlen, maxlen,has_error)     
         end
         
         # Implements varargs, auto out|inout pointers, errors, conversion of arrays to pointer, auto handling of data and destroy notify
@@ -214,14 +218,14 @@ module GirFFI
           
           has_cb,        # indicates if we accept block b
           has_destroy,   # indicates it acepts a destroy notify callback
-          has_error,     # indicates if we should raise
+
           args_,
           idx,           # map of full args to ruby style arguments indices
           minlen,        # mininum amount of args
-          maxlen =       # max amount of args
-          
+          maxlen,        # max amount of args
+          has_error =    # indicates if we should raise          
           prep_arguments()
-              
+              p minlen,maxlen,has_error
           
           this = nil
           if method?
@@ -291,7 +295,7 @@ module GirFFI
           end
           
           if q=has_error
-            result[q] = FFI::MemoryPointer.new(:pointer)
+            has_error = FFI::MemoryPointer.new(:pointer)
           end
           
           callbacks.keys.sort.each do |i|
@@ -304,7 +308,7 @@ module GirFFI
           if this
             result = [this].push(*result)
           end
-                 
+                 p has_error
           return result, inouts, outs, return_values, has_error
         end    
       
@@ -347,6 +351,9 @@ module GirFFI
             params = [:pointer].push(*params)
           end
           
+          params << :pointer if respond_to?(:throws?) and throws?
+          p [may_return_null?,:RETURN]
+          
           if t=return_type.flattened_tag == :object
             cls = ::Object.const_get(ns=return_type.interface.namespace.to_sym).const_get(n=return_type.interface.name.to_sym)
             ret = cls::StructClass
@@ -387,15 +394,36 @@ module GirFFI
           
           o, inouts, outs, return_values, error = ruby_style_arguments(*o,&b)
 
+          error.write_pointer(FFI::Pointer::NULL) if error
+          o << error.addr if error
+
           p [:call, symbol, [args,ret], return_values, [:error, !!error], o] if GirFFI::DEBUG[:VERBOSE]
 
           ns = ::Object.const_get(namespace.to_sym)
-
+          
           result = ns::Lib.invoke_function(self.symbol.to_sym,*o)
+          
+          bool = true
          
-          raise "error" if error and !error.get_pointer(0).is_null?
-         
-          returns = outs.keys.sort.map do |i|
+          if error
+            bool = error.read_pointer.is_null?
+            m=GObjectIntrospection::GError.new(error.get_pointer(0)).message unless bool
+            raise m unless bool
+          end
+          
+          returns = inouts.keys.sort.map do |i|
+            info = inouts[i]
+            
+            info = info.argument_type
+            info.extend GirFFI::Builder::Value
+            
+            i += 1 if method?
+            ptr = o[i]
+
+            next info.get_ruby_value(ptr)
+          end
+
+          returns.push(*outs.keys.sort.map do |i|
             info = outs[i]
             
             info = info.argument_type
@@ -403,23 +431,33 @@ module GirFFI
             
             i += 1 if method?
             ptr = o[i]
-            
-            next info.get_ruby_value(ptr.get_pointer(0))
-          end
+         
+            if MRUBY or info.get_ffi_type == :pointer
+              ptr = ptr.get_pointer(0)
+            end
+         
+            next info.get_ruby_value(ptr)
+          end)
+
           
           info = return_type
           info.extend GirFFI::Builder::Value
           
-          result = info.get_ruby_value(result)
-          
-          returns << result unless ret == :void
-          
-          if returns.length == 1
-            returns = returns[0]
+          if !skip_return?
+            result = info.get_ruby_value(result)
+            
+            if ret != :void 
+              returns = [result].push *returns
+            end            
           else
-            returns = returns.reverse
+            result = nil
           end
           
+          
+          if returns.length <= 1
+            returns = returns[0]
+          end
+
           return returns
         end
       end
