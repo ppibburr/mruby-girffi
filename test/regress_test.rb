@@ -386,7 +386,8 @@ assert("Regress::TestObj#skip_return_val_no_out") do
 
   begin
     instance.skip_return_val_no_out 0
-  rescue
+  rescue => e
+    p e
     bool = true
   end
 

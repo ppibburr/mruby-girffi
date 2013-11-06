@@ -395,7 +395,8 @@ module GirFFI
           o, inouts, outs, return_values, error = ruby_style_arguments(*o,&b)
 
           error.write_pointer(FFI::Pointer::NULL) if error
-          o << error.addr if error
+          p [:MRUBY,MRUBY]
+          o << error.to_out(true) if error
 
           p [:call, symbol, [args,ret], return_values, [:error, !!error], o] if GirFFI::DEBUG[:VERBOSE]
 
@@ -407,7 +408,8 @@ module GirFFI
          
           if error
             bool = error.read_pointer.is_null?
-            m=GObjectIntrospection::GError.new(error.get_pointer(0)).message unless bool
+            m=GObjectIntrospection::GError.new(error.read_pointer).message unless bool
+            p [:ERROR,m,bool]
             raise m unless bool
           end
           
