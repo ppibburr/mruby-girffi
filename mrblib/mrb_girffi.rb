@@ -15,15 +15,16 @@ module GirFFI
           return ptr unless ptr.is_a?(CFunc::Pointer)
           
           ptr = FFI::Pointer.refer(ptr) unless ptr.is_a?(FFI::Pointer)
+        
         else
           return ptr unless ptr.is_a?(FFI::Pointer)
         end
+        
         return nil if ptr.is_null?
       
         if flattened_tag == :object
           cls = ::Object.const_get(ns=interface.namespace.to_sym).const_get(n=interface.name.to_sym)
           ins = cls.wrap(ptr)
-          p ins
           return(GirFFI::upcast_object(ins.to_ptr))
           
         elsif tag == :array
@@ -57,8 +58,8 @@ module GirFFI
           
         elsif (type = get_ffi_type) == :void
           return nil
+          
         elsif (type = get_ffi_type) != :pointer
-
           return ptr.send("read_#{type}")
         end      
         
@@ -175,10 +176,8 @@ module GirFFI
           
           minlen -= 1 if has_cb
           minlen -= 1 if has_destroy
-         # minlen -= 1 if has_error
-          
+                   
           maxlen -= 1 if has_destroy
-         # maxlen -= 1 if has_error
           maxlen -= 1 if has_cb
           
           if lp
@@ -225,7 +224,7 @@ module GirFFI
           maxlen,        # max amount of args
           has_error =    # indicates if we should raise          
           prep_arguments()
-              p minlen,maxlen,has_error
+
           
           this = nil
           if method?
@@ -308,7 +307,7 @@ module GirFFI
           if this
             result = [this].push(*result)
           end
-                 p has_error
+
           return result, inouts, outs, return_values, has_error
         end    
       
@@ -352,7 +351,6 @@ module GirFFI
           end
           
           params << :pointer if respond_to?(:throws?) and throws?
-          p [may_return_null?,:RETURN]
           
           if t=return_type.flattened_tag == :object
             cls = ::Object.const_get(ns=return_type.interface.namespace.to_sym).const_get(n=return_type.interface.name.to_sym)
@@ -395,7 +393,7 @@ module GirFFI
           o, inouts, outs, return_values, error = ruby_style_arguments(*o,&b)
 
           error.write_pointer(FFI::Pointer::NULL) if error
-          p [:MRUBY,MRUBY]
+
           o << error.to_out(true) if error
 
           p [:call, symbol, [args,ret], return_values, [:error, !!error], o] if GirFFI::DEBUG[:VERBOSE]
@@ -409,7 +407,6 @@ module GirFFI
           if error
             bool = error.read_pointer.is_null?
             m=GObjectIntrospection::GError.new(error.read_pointer).message unless bool
-            p [:ERROR,m,bool]
             raise m unless bool
           end
           

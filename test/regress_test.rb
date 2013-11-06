@@ -285,7 +285,17 @@ assert("Regress::STRING_CONSTANT") do
   assert_equal "Some String", Regress::STRING_CONSTANT
 end
 
+# Enums
+assert("Regress::ATestError") do
+  bool = (Regress::ATestError::CODE0 == 0) and (Regress::ATestError::CODE1 == 1) and (Regress::ATestError::CODE2 == 2)
+  assert_true bool
+end
+
 # derived GObject::Object's class
+
+assert("Regress::TestObj::StructClass") do
+  assert_true !!Regress::TestObj::StructClass.ancestors.index(FFI::Struct)
+end
 
 assert("Regress::TestObj.constructor") do
   obj = Regress::TestObj.constructor
@@ -335,6 +345,10 @@ instance = Regress::TestObj.new_from_file("foo")
 
 ## methods
 
+assert("Regress::TestObj#get_struct") do
+  assert_kind_of(FFI::Struct,instance.get_struct)
+end
+
 assert("Regress::TestObj#do_matrix") do
   assert_equal instance.do_matrix("bar"), 42
 end
@@ -380,14 +394,24 @@ assert("Regress::TestObj#skip_return_val") do
   assert_true(((out_b == a + 1) and (out_d == d + 1) and (out_sum == num1 + 10 * num2)))
 end
 
+# Methods that skip return value, simply return nil unless:
+#   There are inout params, and/or
+#   There are   out params
+#
+# When there are  inout/out params:
+#   The return value is [inouts,outs].flatten()
+#
+# Below is the the method documentation for `Regress::TestObj#skip_return_val_no_out`
+#
+# @param q [Integer] raises on (q <= 1 )
+# @return [NilClass] even though the function returns a value
 assert("Regress::TestObj#skip_return_val_no_out") do
   bool = false
   result = instance.skip_return_val_no_out 1
 
   begin
     instance.skip_return_val_no_out 0
-  rescue => e
-    p e
+  rescue
     bool = true
   end
 
