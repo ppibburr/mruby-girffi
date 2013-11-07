@@ -239,12 +239,30 @@ end
 
 if !respond_to?(:__t_printstr__)
   def __t_printstr__ q
-    puts q.to_s
+    print q.to_s
   end
 end
-GirFFI::DEBUG[:VERBOSE]= 0==1
 
+GirFFI::DEBUG[:VERBOSE]= 0==1
 GirFFI.setup :Regress
+
+## Covered:
+## * namespace constants
+## * namespace enums
+## * objects
+## * struct_class
+## * struct_object
+## * class_methods
+## * instance_methods
+## * signals
+## * properties
+## * callbacks
+## * callback param of array (length)
+##
+## TODO:
+## * return value of Array   (zero terminated, length)
+## * out param of Array      (zero terminated, length)
+## * callback param of array (zero terminated)
 
 # Tests generated methods and functions in the Regress namespace.
 
@@ -289,6 +307,41 @@ end
 assert("Regress::ATestError") do
   bool = (Regress::ATestError::CODE0 == 0) and (Regress::ATestError::CODE1 == 1) and (Regress::ATestError::CODE2 == 2)
   assert_true bool
+end
+
+# Callbacks
+assert("Regress.test_simple_callback()") do
+  bool = false
+  Regress::test_simple_callback do
+    bool = true
+  end
+  assert_true bool
+end
+
+assert("Regress.test_callback()") do
+  bool = false
+
+  q=Regress::test_callback do
+    bool = true
+    next 3
+  end
+
+  assert_true bool and (q == 3)
+end
+
+assert("Regress.test_array_callback()") do
+  cnt = 0
+  bool_a = []
+  
+  q=Regress::test_array_callback do |a,b,*o|
+    bool = (a.length == 4) and (a == [-1, 0 ,1, 2]) and (b.length == 3) and ( b == ["one","two","three"])
+    bool_a << bool
+    
+    cnt += 1
+    next 3
+  end
+
+  assert_true (cnt == 2) and (q == 6) and (bool_a == [true, true])
 end
 
 # derived GObject::Object's class

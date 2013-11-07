@@ -10,7 +10,7 @@ module GirFFI
   # Handles building bindings
   module Builder
     module Value
-      def get_ruby_value(ptr)
+      def get_ruby_value(ptr,i=nil,rv_a=nil,info_a=nil)
         if FFI::Pointer.instance_methods.index(:addr)
           return ptr unless ptr.is_a?(CFunc::Pointer)
           
@@ -28,11 +28,18 @@ module GirFFI
           return(GirFFI::upcast_object(ins.to_ptr))
           
         elsif tag == :array
-          if (len=array_length) > 0
-            type = element_type
-            ary = ptr.send "read_array_of_#{type}", len
-          
-            return(ary)
+          if (len_i=array_length) > 0
+            p GObjectIntrospection::ITypeInfo::TYPE_MAP
+            p interface_type
+            type = GObjectIntrospection::ITypeInfo::TYPE_MAP[element_type]
+            
+            len_info = info_a[len_i]
+            len_info.extend GirFFI::Builder::Value
+            len = len_info.get_ruby_value(rv_a[len_i])
+                                  
+            ary = ptr.send("read_array_of_#{type}", len)
+            p [:LENGTH,len, type]
+            return ary, len_i
           
           elsif zero_terminated?
             ary = []
@@ -365,16 +372,33 @@ module GirFFI
         def make_closure &b
           FFI::Closure.new(*(sig=get_signature)) do |*o|
             i = -1
+            
+            take_a = []
+            
             o = o.map do |q|
               i += 1
+              
+              next if take_a.index(i)
                 
               info = arg(i).argument_type
               info.extend GirFFI::Builder::Value
                 
-              next info.get_ruby_value(q)
+              val, take = info.get_ruby_value(q,i,o,args())
+              
+              take_a << take if take
+              
+              next val
             end
              
-            b.call(*o)
+            i = -1 
+            o = o.find_all do |q|
+              i += 1            
+              !take_a.index(i)
+            end
+             
+            retv = b.call(*o)
+            p retv,:retv
+            next retv
           end        
         end
       end
