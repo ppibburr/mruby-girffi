@@ -279,7 +279,7 @@ assert("Regress::DOUBLE_CONSTANT") do
 end
 
 assert("Regress::GUINT64_CONSTANT") do
-  assert_equal Regress::GUINT64_CONSTANT, -1
+  assert_equal Regress::GUINT64_CONSTANT, -3
 end
 
 assert("Regress::G_INT64_CONSTANT") do

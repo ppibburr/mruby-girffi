@@ -29,8 +29,6 @@ module GirFFI
           
         elsif tag == :array
           if (len_i=array_length) > 0
-            p GObjectIntrospection::ITypeInfo::TYPE_MAP
-            p interface_type
             type = GObjectIntrospection::ITypeInfo::TYPE_MAP[element_type]
             
             len_info = info_a[len_i]
@@ -38,7 +36,7 @@ module GirFFI
             len = len_info.get_ruby_value(rv_a[len_i])
                                   
             ary = ptr.send("read_array_of_#{type}", len)
-            p [:LENGTH,len, type]
+
             return ary, len_i
           
           elsif zero_terminated?
@@ -397,7 +395,7 @@ module GirFFI
             end
              
             retv = b.call(*o)
-            p retv,:retv
+            
             next retv
           end        
         end
