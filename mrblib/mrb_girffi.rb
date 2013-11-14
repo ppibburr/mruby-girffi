@@ -717,9 +717,10 @@ module GirFFI
         # @param f [#to_s] the name of the function
         # @return GObjectIntrospection::IFunctionInfo
         def find_function f
+          
           if m_data=data.get_methods.find do |m| m.name == f.to_s end
             m_data.extend GirFFI::Builder::MethodBuilder::Function
-
+            p f,:have
             return m_data
           end
         end        
@@ -1000,7 +1001,7 @@ module GirFFI
         def bind_class c, info
           object_class = info.class_struct
 
-          bind_object_class(object_class.name.to_sym, object_class)
+          bind_object_class(object_class.name.to_sym, object_class) if object_class
         
           sc = nil
           
