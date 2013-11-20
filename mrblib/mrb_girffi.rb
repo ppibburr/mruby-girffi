@@ -25,6 +25,7 @@ module GirFFI
         if flattened_tag == :object
           cls = ::Object.const_get(ns=interface.namespace.to_sym).const_get(n=interface.name.to_sym)
           ins = cls.wrap(ptr)
+          
           return(GirFFI::upcast_object(ins.to_ptr))
           
         elsif tag == :array
@@ -1086,15 +1087,9 @@ module GirFFI
     ins = ins.to_ptr if ins.respond_to?(:to_ptr)    
     ins = ins.pointer if ins.respond_to?(:pointer) 
       
-    type = GObject::Object::StructClass.new(ins)[:g_type_instance]
+    type = GObject::type_name_from_instance(ins)
     
-    return nil if type.is_null?
-    
-    if !type.is_a?(FFI::Pointer) and !type.is_a?(Integer)
-      type = CFunc::UInt64.refer(type).value
-    elsif type.is_a?(FFI::Pointer)
-      type = type.read_uint64
-    end
+    type = GObject::type_from_name(type)
     
     return type  
   end
@@ -1113,6 +1108,7 @@ module GirFFI
   # many functions in libraries based on GObject return casts to the lowest common GType
   # this ensures that, in this example, an instance of Gtk::Button would be returned 
   def self.upcast_object w
+    #return w
     type = type_from_instance(w)
     
     return w if !type
