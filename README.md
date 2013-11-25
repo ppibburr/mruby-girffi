@@ -25,9 +25,9 @@ Some niceness is built in mruby-girffi for GObject, Gtk >= 2.0, WebKit >= 1.0
 Typically when the Rubyifcation of an api goes out the scope of core mruby-girffi I create these. 
 
 Thus far:  
-* [mrb-glib2][mruby-glib2] Adds classes to rubyfy the API and fix incorrect introspection data
-* [mrb-gtk2][mruby-gtk2] Lowers the learning curve from the CRuby bindings
-* [mrb-gtk2][mruby-gtk3] Lowers the learning curve from the CRuby bindings
+* [mruby-glib2][mrb-glib2] Adds classes to rubyfy the API and fix incorrect introspection data
+* [mruby-gtk2][mrb-gtk2] Lowers the learning curve from the CRuby bindings
+* [mruby-gtk2][mrb-gtk3] Lowers the learning curve from the CRuby bindings
 
 Requirements
 ===
