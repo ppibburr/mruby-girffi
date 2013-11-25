@@ -76,6 +76,21 @@ Cons
 * A slight smell of `C` is left over
 * Differences compared to the CRuby Gtk2 official bindings (method arguments order may differ. Constant naming conventions may differ)
 
+TESTS
+===
+One needs girepository dev files  
+This builds the Regress-1.0 library  
+```sh
+# build the test library, etc, and run
+# gnerated files go to ./tmp
+# expects mruby root to be one level above current dir
+# ie: ../mruby
+make test
+
+# clean
+make clean
+```
+
 TODO
 ===
 * Makes no attempt to manage memory  
