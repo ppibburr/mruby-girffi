@@ -9,12 +9,26 @@
 [gobject]: https://developer.gnome.org/gobject/stable/
 [glib]: https://developer.gnome.org/glib/stable/
 
+[mrb-glib2]: https://github.com/ppibburr/mruby-glib2
+[mrb-gtk2]: https://github.com/ppibburr/mruby-gtk2
+[mrb-gtk3]: https://github.com/ppibburr/mruby-gtk3
+
 Synopsis
 ===
 [MRuby][mruby] library that provides complete API access to C libraries introspectable by [GObjectIntropsection][gir]
 Bindings are dynamicaly generated as needed via usage of [mruby-gobject-intropsection][mrb-gir]
 
-Will also run on CRuby 1.9.x, [mruby-gobject-intropsection][mrb-gir]'s mrblib and `ffi` are required.
+Will also run on CRuby 1.9.x, [mruby-gobject-intropsection][mrb-gir]'s mrblib and `ffi` are required.  
+(However this is a secondary objective as the primary target is [mruby][mruby])
+
+Several libraries exist to make common GObject based bindings more Ruby-like   
+Some niceness is built in mruby-girffi for GObject, Gtk >= 2.0, WebKit >= 1.0  
+Typically when the Rubyifcation of an api goes out the scope of core mruby-girffi I create these. 
+
+Thus far:  
+* [mrb-glib2][mruby-glib2] Adds classes to rubyfy the API and fix incorrect introspection data
+* [mrb-gtk2][mruby-gtk2] Lowers the learning curve from the CRuby bindings
+* [mrb-gtk2][mruby-gtk3] Lowers the learning curve from the CRuby bindings
 
 Requirements
 ===
