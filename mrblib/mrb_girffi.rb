@@ -7,6 +7,59 @@ module GirFFI
   # Keep closures here.
   CB = []
 
+  class FunctionTool
+    attr_reader :data
+    def initialize data, &b
+      @data = data
+      @block = b
+    end
+    
+    def call *o,&b
+      @block.call(*o,&b)
+    end
+    
+    def arity
+      max = _init_().reverse()[1]
+      min = _init_().reverse()[2]      
+      
+      if max == min
+        return max
+      end
+      
+      return min * -1
+    end
+    
+    # private
+    def _init_
+      @prepped ||= @data.prep_arguments
+    end
+    
+    # public
+    def signature
+      @data.get_signature
+    end
+    
+    def throws?
+      !!_init_().last
+    end
+    
+    def out_params
+      _init_().reverse[11]
+    end
+    
+    def inout_params
+      _init_().reverse[10]
+    end
+    
+    def takes_block?
+      !!_init_().reverse[6]
+    end
+    
+    def returns
+      _init_().reverse[7]
+    end
+  end
+
   # Handles building bindings
   module Builder
     module Value
@@ -23,6 +76,14 @@ module GirFFI
         return nil if ptr.is_null?
       
         if flattened_tag == :object
+          if i and info_a
+            if info_a[i].direction == :out
+              ptr = ptr.get_pointer(0)
+            end
+          end
+          
+          return nil if ptr.is_null?
+          
           cls = ::Object.const_get(ns=interface.namespace.to_sym).const_get(n=interface.name.to_sym)
           ins = cls.wrap(ptr)
           
@@ -31,8 +92,9 @@ module GirFFI
         elsif tag == :array
           if (len_i=array_length) > 0
             type = GObjectIntrospection::ITypeInfo::TYPE_MAP[element_type]
-            
-            len_info = info_a[len_i]
+          
+            len_info = info_a[len_i].argument_type
+          
             len_info.extend GirFFI::Builder::Value
             len = len_info.get_ruby_value(rv_a[len_i])
                                   
@@ -66,6 +128,12 @@ module GirFFI
           return nil
           
         elsif (type = get_ffi_type) != :pointer
+          if i and info_a
+            if info_a[i].direction == :out
+              ptr = ptr.get_pointer(0)
+            end
+          end
+          
           return ptr.send("read_#{type}")
         end      
         
@@ -90,8 +158,8 @@ module GirFFI
             
             return_values = [], # arguments to pe returned as the result of calling the function
             
-            has_cb      = false, # indicates if we accept block b
-            has_destroy = false, # indicates it acepts a destroy notify callback
+            has_cb      = [], # indicates if we accept block b
+            has_destroy = [], # indicates it acepts a destroy notify callback
             
             args_ = args(),
             
@@ -127,9 +195,13 @@ module GirFFI
               nulls[i] = a
               dropped[i] = a
             end
-            
+
             if (data = a.closure) >= 0
-              (has_cb = [a, args_[data]])
+              x = has_cb
+              x[0] = i
+              x[1] = a
+              x[2] = args_[data]
+              
               callbacks[i] = data
               dropped[i] = a
               take += 1
@@ -137,7 +209,11 @@ module GirFFI
             end
             
             if (data = a.destroy) >= 0
-              has_destroy = [a, args_[data]]
+              x=has_destroy
+              x[0] = i
+              x[1] = a
+              x[2] = args_[data]
+              
               callbacks[i] = data
               dropped[i] = a
               take += 1
@@ -180,11 +256,11 @@ module GirFFI
           
           maxlen = minlen = args.length
           
-          minlen -= 1 if has_cb
-          minlen -= 1 if has_destroy
+          minlen -= 1 if !has_cb.empty?
+          minlen -= 1 if !has_destroy.empty?
                    
-          maxlen -= 1 if has_destroy
-          maxlen -= 1 if has_cb
+          maxlen -= 1 if !has_destroy.empty?
+          maxlen -= 1 if !has_cb.empty?
           
           if lp
             minlen = lp + 1
@@ -195,8 +271,8 @@ module GirFFI
           minlen = minlen - (callbacks.keys.length)
           
           p [:arity, [:min_args,minlen], [:max_args, maxlen]]  if GirFFI::DEBUG[:VERBOSE] 
-          
-          return returns.push(minlen, maxlen,has_error)     
+
+          return returns.push(minlen, maxlen,has_error) 
         end
         
         # Implements varargs, auto out|inout pointers, errors, conversion of arrays to pointer, auto handling of data and destroy notify
@@ -231,7 +307,6 @@ module GirFFI
           has_error =    # indicates if we should raise          
           prep_arguments()
 
-          
           this = nil
           if method?
             this = passed[0]
@@ -291,12 +366,8 @@ module GirFFI
             
             ptr = FFI::MemoryPointer.new(type)
             ptr.send :"write_#{type}", q
-            
+         
             result[i] = ptr.to_out true
-          end
-          
-          if q=has_cb
-            result[args_.index(q[0])] = b
           end
           
           if q=has_error
@@ -304,10 +375,17 @@ module GirFFI
           end
           
           callbacks.keys.sort.each do |i|
-            info = arg(i).argument_type.interface
+            info = args[i].argument_type.interface
             info.extend GirFFI::Builder::MethodBuilder::Callable
-            
-            result[i] = info.make_closure(&b)
+            if !has_cb.empty?
+              if i == has_cb[0]
+                result[i] = info.make_closure(&b)
+              else
+                result[i] = FFI::Closure.new([],:void)
+              end
+            else
+              result[i] = info.make_closure(&b)
+            end
           end            
           
           if this
@@ -369,11 +447,15 @@ module GirFFI
         end
         
         def make_closure &b
-          FFI::Closure.new(*(sig=get_signature)) do |*o|
+          at,ret = get_signature
+          
+          cb=FFI::Closure.new(at,ret) do |*o|
             i = -1
             
             take_a = []
-            
+          
+            # Get the Ruby value's
+            # Some values can be omitted
             o = o.map do |q|
               i += 1
               
@@ -389,16 +471,23 @@ module GirFFI
               next val
             end
              
+            # Remove values that can be omitted
+            # typically array length 
             i = -1 
             o = o.find_all do |q|
               i += 1            
               !take_a.index(i)
             end
-             
+            
             retv = b.call(*o)
             
             next retv
-          end        
+          end
+          
+          # Store the closure
+          CB << cb
+          
+          return cb
         end
       end
     
@@ -422,8 +511,12 @@ module GirFFI
           p [:call, symbol, [args,ret], return_values, [:error, !!error], o] if GirFFI::DEBUG[:VERBOSE]
 
           ns = ::Object.const_get(namespace.to_sym)
-          
-          result = ns::Lib.invoke_function(self.symbol.to_sym,*o)
+
+          result = ns::Lib.invoke_function(self.symbol.to_sym,*(o.map do |qi| qi.respond_to?(:to_ptr) ? qi.to_ptr : qi end))
+
+          if result.is_a?(FFI::Pointer)
+            result = nil if result.is_null?
+          end
           
           bool = true
          
@@ -433,41 +526,49 @@ module GirFFI
             raise m unless bool
           end
           
-          returns = inouts.keys.sort.map do |i|
-            info = inouts[i]
-            
-            info = info.argument_type
-            info.extend GirFFI::Builder::Value
-            
-            i += 1 if method?
-            ptr = o[i]
-
-            next info.get_ruby_value(ptr)
+          #
+          # begin conversion of the return values to Ruby
+          #
+          i = -1
+          
+          take_a = []
+          aa = []  
+          
+          # do not include self argument
+          if method?
+            w=(1..o.length-1).map do |i| o[i] end
+          else
+            w=o
           end
 
-          returns.push(*outs.keys.sort.map do |i|
-            info = outs[i]
+          # conversion
+          # only the values to be returned
+          w.each do |q|
+            i += 1
+            next unless inouts.keys.index(i) or outs.keys.index(i)  
+            next if take_a.index(i)
             
-            info = info.argument_type
+            q = w[i]  
+            info = arg(i).argument_type
+            
             info.extend GirFFI::Builder::Value
             
-            i += 1 if method?
-            ptr = o[i]
-         
-            if MRUBY or info.get_ffi_type == :pointer
-              ptr = ptr.get_pointer(0)
-            end
-         
-            next info.get_ruby_value(ptr)
-          end)
+            val, take = info.get_ruby_value(q,i,w,args())
+            
+            take_a << take if take
+            
+            aa << val
+          end
 
+          returns = aa
           
           info = return_type
           info.extend GirFFI::Builder::Value
           
+          # Do we inlcude the result in the return values?
           if !skip_return?
             result = info.get_ruby_value(result)
-            
+
             if ret != :void 
               returns = [result].push *returns
             end            
@@ -475,7 +576,7 @@ module GirFFI
             result = nil
           end
           
-          
+          # Only return Array when returns.length > 1
           if returns.length <= 1
             returns = returns[0]
           end
@@ -588,7 +689,7 @@ module GirFFI
         # @return [Object] the result
         def method_missing m, *o, &b
           if m_data=self.class.find_function(m)
-            bind_instance_method(m,m_data)
+            self.class.bind_instance_method(m,m_data)
             
             return send m,*o,&b
           end
@@ -613,12 +714,12 @@ module GirFFI
         end
         
         def self.new *o,&b
-          if find_function(:new)
-            return method_missing(:new,*o,&b)
+          if f=find_function(:new)
+            return wrap(method_missing(:new,*o,&b))
           end
           
           super
-        end                
+        end      
       end
 
       module StructClass
@@ -1034,6 +1135,10 @@ module GirFFI
           return cls
         end
         
+        def get_methods()
+          GirFFI::REPO::infos("#{self}").find_all do |i| i.is_a?(GObjectIntrospection::IFunctionInfo) end
+        end
+        
         def bind_function data
           args, ret = data.get_signature 
 
@@ -1054,6 +1159,20 @@ module GirFFI
           singleton_class.send :define_method, name do |*o,&b|
             m_data.call(*o,&b)
           end        
+        end
+        
+        def girffi_method  m
+          if info=find_function(m)
+            bind_module_function(m, info)
+            
+            this = self
+            
+            prc = GirFFI::FunctionTool.new(info) do |*o,&b|
+              this.send m, *o, &b
+            end
+            
+            return(prc)            
+          end
         end
         
         def method_missing m,*o,&b
@@ -1110,6 +1229,8 @@ module GirFFI
   def self.upcast_object w
     #return w
     type = type_from_instance(w)
+    
+    return w if type == 0
     
     return w if !type
       
@@ -1181,8 +1302,12 @@ module GObject
     
     def signal_connect_data s,&b
       signal = self.class.get_signal s
-
-      GirFFI::CB << cb = signal ? signal.make_closure(&b) : FFI::Closure.new([],:void, &b)
+    
+      if signal
+        cb = signal.make_closure(&b)
+      else
+        GirFFI::CB << cb = FFI::Closure.new([],:void, &b)
+      end
       
       GObject::Lib::invoke_function(:g_signal_connect_data,self.to_ptr,s,cb,nil,nil,nil)
     end
@@ -1208,6 +1333,55 @@ def GirFFI.Gtk()
   ::Gtk.const_missing(:Object) if version < 3
 end
 
+def GirFFI.GLib()
+  GLib::Lib.attach_function :g_file_get_contents,[:string,:pointer,:pointer,:pointer],:bool
+  GLib::Lib.attach_function :g_file_set_contents,[:string,:string,:int,:pointer],:bool
+    
+  GLib.module_eval do
+    # Setup GLib::Error
+    NC::define_class self,:Error,GObjectIntrospection::GError
+  
+    # Introspection info has contents being an `array of `uint8``
+    # However, contents should be `utf8` implying `string`
+    def self.file_get_contents path
+      # alloc the buffer
+      buff = FFI::MemoryPointer.new(:pointer)
+      
+      # alloc the error
+      error  = FFI::MemoryPointer.new(:pointer)
+      # ensure NULL
+      error.write_pointer(FFI::Pointer::NULL) if error
+
+      err = error.to_out(true)
+      
+      ret = self::Lib.g_file_get_contents path, buff, nil.to_ptr, err
+     
+      # Something went wrong
+      raise GLib::Error.new(error).message unless error.is_null?
+      
+      # A string of the file contents
+      return buff.get_pointer(0).read_string
+    end
+    
+    # Like above
+    def self.file_set_contents path,buff
+      # alloc the error
+      error  = FFI::MemoryPointer.new(:pointer)
+      # ensure NULL
+      error.write_pointer(FFI::Pointer::NULL) if error
+
+      err = error.to_out(true)
+      
+      ret = self::Lib.g_file_set_contents path, buff, buff.length, err
+     
+      # Something went wrong
+      raise GLib::Error.new(error).message unless error.is_null?
+      
+      return ret
+    end
+  end
+end
+
 # Implement WebKit::DOMEventTarget#add_event_listener on WebKit versions > 1.0
 # Called if `WebKit` is to be setup 
 def GirFFI.WebKit()
@@ -1227,7 +1401,7 @@ def GirFFI.WebKit()
     mod = WebKit::DOMEventTarget
     mod.class_eval do
       define_method :add_event_listener do |name,bubble,&b|
-        GirFFI::CB << cb=FFI::Closure.new([GObject::Object::StructClass,GObject::Object::StructClass],:void) do |*o|
+        cb=FFI::Closure.new([GObject::Object::StructClass,GObject::Object::StructClass],:void) do |*o|
           o = o.map do |q|
             GirFFI::upcast_object(q)
           end
@@ -1235,6 +1409,70 @@ def GirFFI.WebKit()
         end
 
         WebKit::Lib.webkit_dom_event_target_add_event_listener(self.to_ptr,name,cb,bubble,nil.to_ptr)
+      end
+    end
+  end
+end
+
+# If no mrbgem to provide Hash#each_pair
+# we implement it
+unless Hash.instance_methods.index(:each_pair)
+  class Hash
+    def each_pair &b
+      keys.each do |k|
+        b.call k,self[k]
+      end
+    end
+  end
+end
+
+# Allows implentations through description via Hash
+# Useful for: missing and/or wrong introspection data
+#             making things more ruby-like
+def GirFFI.describe h
+  unless ::Object.const_defined?(h[:namespace])
+    if h[:version]
+      GirFFI::setup h[:namespace], h[:version]
+    else
+      GirFFI::setup h[:namespace]
+    end  
+  end
+
+  ns =  ::Object.const_get(h[:namespace])
+
+  # module functions
+  (h[:define][:methods] ||= {}).each_pair do |m,mv|
+    ns::Lib.attach_function mv[:symbol],mv[:arguments_type],mv[:result_type]
+    
+    ns.singleton_class.define_method m do |*o,&b|
+      self::Lib.send(mv[:symbol], *o, &b)    
+    end
+    
+    ns.singleton_class.alias_method mv[:alias],m if mv[:alias]
+  end
+
+  (h[:define][:classes] ||= {}).each_pair do |c,cv|
+    ns.module_eval do
+      cls = NC::define_class ns, c, ::Object
+      
+      cls.class_eval do
+        # class functions
+        (cv[:class_methods] ||= {}).each_pair do |n,mv|
+          cls.singleton_class.define_method n do |*o,&b|
+            ns.send mv[:symbol],*o,&b
+          end
+          
+          cls.singleton_class.alias_method mv[:alias], n if mv[:alias]
+        end
+        
+        # instance methods
+        (cv[:instance_methods] ||= {}).each_pair do |n,mv|
+          cls.define_method n do |*o,&b|
+            ns.send mv[:symbol], self.to_ptr , *o, &b
+          end
+          
+          cls.alias_method mv[:alias], n if mv[:alias]
+        end        
       end
     end
   end

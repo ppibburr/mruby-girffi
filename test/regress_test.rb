@@ -243,7 +243,7 @@ if !respond_to?(:__t_printstr__)
   end
 end
 
-GirFFI::DEBUG[:VERBOSE]= 0==1
+GirFFI::DEBUG[:VERBOSE]= 1==1
 GirFFI.setup :Regress
 
 ## Covered:
@@ -378,6 +378,7 @@ end
 
 assert("Regress::TestObj.null_out") do
   obj = Regress::TestObj.null_out
+
   assert_nil obj
 end
 
@@ -434,15 +435,15 @@ end
 #          out_sum: out (num1 + 10 * num2)
 #
 # the result signature is [retval (save when skipped), *inout, *out]
-# ie: [d, out_b, out_sum]
+# ie: [out_b, out_d, out_sum]
 assert("Regress::TestObj#skip_return_val") do
   a = 1
   c = 2.0
   d = 3
-  num1 = 4
-  num2 = 5
+  num1 = 7
+  num2 = 9
   
-  out_d, out_b, out_sum = instance.skip_return_val a, c, d, num1, num2
+  out_b, out_d, out_sum = instance.skip_return_val a, c, d, num1, num2
 
   assert_true(((out_b == a + 1) and (out_d == d + 1) and (out_sum == num1 + 10 * num2)))
 end
