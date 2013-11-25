@@ -27,7 +27,7 @@ Typically when the Rubyifcation of an api goes out the scope of core mruby-girff
 Thus far:  
 * [mruby-glib2][mrb-glib2] Adds classes to rubyfy the API and fix incorrect introspection data
 * [mruby-gtk2][mrb-gtk2] Lowers the learning curve from the CRuby bindings
-* [mruby-gtk2][mrb-gtk3] Lowers the learning curve from the CRuby bindings
+* [mruby-gtk3][mrb-gtk3] Lowers the learning curve from the CRuby bindings
 
 Requirements
 ===
