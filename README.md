@@ -8,10 +8,9 @@
 [gir]: http://developer.gnome.org/gi/unstable/gi-girepository.html
 [gobject]: https://developer.gnome.org/gobject/stable/
 [glib]: https://developer.gnome.org/glib/stable/
-
-[mrb-glib2]: https://github.com/ppibburr/mruby-glib2
-[mrb-gtk2]: https://github.com/ppibburr/mruby-gtk2
-[mrb-gtk3]: https://github.com/ppibburr/mruby-gtk3
+[mrb-glib2]: https://github.com/ppibburr/mruby-glib2/
+[mrb-gtk2]: https://github.com/ppibburr/mruby-gtk2/
+[mrb-gtk3]: https://github.com/ppibburr/mruby-gtk3/
 
 Synopsis
 ===
