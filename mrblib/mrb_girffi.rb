@@ -1015,6 +1015,8 @@ module GirFFI
             return bind_constant c,info
           when GObjectIntrospection::IEnumInfo.to_s            
             return bind_enum c,info
+          when GObjectIntrospection::IFlagsInfo.to_s            
+            return bind_enum c,info            
           end
         end
         
@@ -1045,7 +1047,7 @@ module GirFFI
               values.push(en.to_sym,v.value)
             end
           end
-          
+          p [n,values]
           self::Lib.enum n,values
 
           return cls
@@ -1442,11 +1444,7 @@ def GirFFI.describe h
 
   # module functions
   (h[:define][:methods] ||= {}).each_pair do |m,mv|
-    ns::Lib.attach_function mv[:symbol],mv[:arguments_type],mv[:result_type]
-    
-    ns.singleton_class.define_method m do |*o,&b|
-      self::Lib.send(mv[:symbol], *o, &b)    
-    end
+    ns::Lib.attach_function mv[:symbol], mv[:argument_types], mv[:return_type]
     
     ns.singleton_class.alias_method mv[:alias],m if mv[:alias]
   end
