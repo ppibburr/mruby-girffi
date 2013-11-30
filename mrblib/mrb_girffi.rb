@@ -7,6 +7,7 @@ module GirFFI
   # Keep closures here.
   CB = []
 
+  # Provides intrsopection of the bindings functions
   class FunctionTool
     attr_reader :data
     def initialize data, &b
@@ -18,6 +19,7 @@ module GirFFI
       @block.call(*o,&b)
     end
     
+    # The resolved ruby style arity
     def arity
       max = _init_().reverse()[1]
       min = _init_().reverse()[2]      
@@ -35,26 +37,39 @@ module GirFFI
     end
     
     # public
+    
+    # The C function FFI signature
     def signature
       @data.get_signature
     end
     
+    # Does the method raise an error.
+    #
+    # @return [Boolean]
     def throws?
       !!_init_().last
     end
     
+    # Retrieve any Out Parameters
     def out_params
       _init_().reverse[11]
     end
     
+    # Retrieve any InOut Parameters
     def inout_params
       _init_().reverse[10]
     end
     
+    # Does this method take a block
     def takes_block?
-      !!_init_().reverse[6]
+      !_init_().reverse[6].empty?
     end
     
+    def arguments
+      _init_().reverse[3]
+    end
+    
+    # All the return values
     def returns
       _init_().reverse[7]
     end
@@ -146,6 +161,8 @@ module GirFFI
         def prep_arguments
           p [:prep_callable, symbol] if GirFFI::DEBUG[:VERBOSE]
           
+          not_return = []
+          
           returns = [
             optionals = {}, # optional arguments
             nulls     = {}, # arguments that accept null
@@ -170,7 +187,19 @@ module GirFFI
           
           take = 0 # the number arguments to redecuced from the list in regards to dinding the ruby style argument index        
           
+          unless skip_return?
+            return_values << return_type
+          end
+          
           args_.each_with_index do |a,i|
+            if a.argument_type.array_length >= 0
+              not_return << i
+            end
+            
+            if a.direction == :out or a.direction == :inout
+              return_values << a unless not_return.index(i)
+            end            
+            
             case a.direction
               when :out
                 outs[i]    = a
@@ -226,10 +255,6 @@ module GirFFI
               take += 1
               next
             end       
-            
-            if a.return_value?
-              return_values << i
-            end
             
             idx[i] = i-take  
           end
@@ -410,6 +435,7 @@ module GirFFI
           
             if t=a.argument_type.flattened_tag == :object
               cls = ::Object.const_get(ns=a.argument_type.interface.namespace.to_sym).const_get(n=a.argument_type.interface.name.to_sym)
+
               next cls::StructClass
             end
         
@@ -851,9 +877,11 @@ module GirFFI
           
           return nil unless have
           
-          return (Proc.new() do |this,*o,&b|
-            this.send n, *o, &b
-          end)
+          prc = GirFFI::FunctionTool.new(info) do |*o,&b|
+            this.send m, *o, &b
+          end
+            
+          return(prc)  
         end
         
         # Instance methods of wrapped objects
@@ -1112,7 +1140,7 @@ module GirFFI
           if sci=info.parent
             sc = ::Object::const_get(sci.namespace.to_sym)::const_get(sci.name.to_sym)
           end
-
+p [:super,sc]
           cls = NC::define_class self, c, sc ? sc : GirFFI::Builder::ObjectBuilder::IsGObjectObject
           cls.send :include, GirFFI::Builder::ObjectBuilder::Interface::Implemented
 
@@ -1320,6 +1348,15 @@ module GObject
   end
 end
 
+def GirFFI.Atk()
+  version = GirFFI::REPO.get_version("Atk").split(".").first.to_i
+  ::Atk.const_missing(:Object) if version < 3
+end
+
+def GirFFI::Gdk()
+  ::Gdk.const_missing(:GC)
+end
+
 # Convienience method to implement Gtk::Object on Gtk versions < 3.0.
 # Called if `Gtk` is to be setup 
 def GirFFI.Gtk()
@@ -1333,6 +1370,8 @@ def GirFFI.Gtk()
 
   version = GirFFI::REPO.get_version("Gtk").split(".").first.to_i
   ::Gtk.const_missing(:Object) if version < 3
+  
+  ::Gtk.const_missing(:Range)  
 end
 
 def GirFFI.GLib()
