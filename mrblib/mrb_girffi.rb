@@ -277,20 +277,39 @@ module GirFFI
             x[2] = nil
           end
           
-          lp = nil
+          nulls.keys.each do |n|
+            idx.delete(n)
+          end
           
-          dropped.keys.map do |i| idx[i] end.find_all do |q| q end.sort.reverse.each do |i|
-            if !lp
-              lp = i
-              next
+          nidx = []
+          
+          qidx = {}
+          
+          idx.keys.sort.each do |k|
+            nidx << idx[k]
+          end
+          
+          nidx.each_with_index do |v,i|
+            qq=idx.find do |q|
+              q[1] == v
             end
             
-            if lp - i == 1
-              lp = i
-              next()
-            end
-            
-            break()
+            qidx[qq[0]] = i
+          end
+          
+          idx.keys.each do |k|
+            idx.delete k
+          end
+          
+          qidx.each_pair do |k,v|
+            idx[k] = v
+          end
+          
+          ri = idx.keys.length-1
+          
+          nulls.keys.sort.each do |k|
+            next if callbacks[k]
+            idx[k] = (ri += 1)
           end
           
           if !is_a?(GObjectIntrospection::ICallbackInfo) and throws?
@@ -301,17 +320,7 @@ module GirFFI
             idx.delete(i)
           end
           
-          q=[]
-          idx.each_pair do |k,v|
-            q << v
-          end
-          ri = q.sort.last || -1
-          
-          nulls.each_pair do |k,v|
-            next if callbacks[k]
-            next if idx[k]
-            idx[k] = ri += 1
-          end
+
 
           maxlen = minlen = args.length
           
@@ -321,8 +330,14 @@ module GirFFI
           maxlen -= 1 if !has_destroy.empty?
           maxlen -= 1 if !has_cb.empty?
           
+          lp = nil
+          
+          if idx.keys.length > 0
+            lp = idx.keys.find_all do |k| !nulls[k] end.length -1
+          end
+          
           if lp
-            minlen = lp + 1
+            minlen = lp
           end
           
           minlen = minlen-outs.length
@@ -388,13 +403,11 @@ module GirFFI
           cnt = 0
           optionals.each do |o|
             cnt += 1
-            p [:optional,o]
           end
           
           cnt = 0
           nulls.each do |o|
             cnt += 1
-            p [:null, o]
           end          
     
           outs.keys.each do |i|
@@ -690,11 +703,6 @@ module GirFFI
         def data
           @data
         end
-      end
-
-      # 'objects' are any thing that has functions that take a 'self' argument
-      class IsAnObject
-        extend GirFFI::Builder::ObjectBuilder::HasData
         
         # create the function invoker of the function +info+
         # and define it as +name+
@@ -702,13 +710,18 @@ module GirFFI
         # @param name [#to_s] the name to bind the function to
         # @param info [GObjectIntrospection::IFunctionInfo] to bind
         # @return FIXME
-        def self.bind_instance_method name, m_data
+        def bind_instance_method name, m_data
           ::Object.const_get(data.namespace.to_sym).bind_function m_data
           
           define_method name do |*o,&b|
             m_data.call(self,*o,&b)
           end
-        end
+        end        
+      end
+
+      # 'objects' are any thing that has functions that take a 'self' argument
+      class IsAnObject
+        extend GirFFI::Builder::ObjectBuilder::HasData
         
         # create the function invoker of the function +info+
         # and define it as +name+
@@ -1377,6 +1390,8 @@ module GObject
   # Force load of GObject::Object 
   # constants of name :Object, must always be force loaded
   const_missing :Object
+  p const_missing(:Binding)
+  
   
   GObject::Lib.attach_function :g_object_set, [:pointer,:string,:pointer,:pointer], :void
   GObject::Lib.attach_function :g_object_get, [:pointer,:string,:pointer,:pointer], :void
@@ -1476,9 +1491,9 @@ def GirFFI.GLib()
       err = error.to_out(true)
       
       ret = self::Lib.g_file_set_contents path, buff, buff.length, err
-     
+
       # Something went wrong
-      raise GLib::Error.new(error).message unless error.is_null?
+      raise GLib::Error.new(error).message unless ret
       
       return ret
     end
@@ -1557,20 +1572,20 @@ def GirFFI.describe h
       cls.class_eval do
         # class functions
         (cv[:class_methods] ||= {}).each_pair do |n,mv|
-          cls.singleton_class.define_method n do |*o,&b|
+          cls.singleton_class.send :define_method, n do |*o,&b|
             ns.send mv[:symbol],*o,&b
           end
           
-          cls.singleton_class.alias_method mv[:alias], n if mv[:alias]
+          cls.singleton_class.send :alias_method, mv[:alias], n if mv[:alias]
         end
         
         # instance methods
         (cv[:instance_methods] ||= {}).each_pair do |n,mv|
-          cls.define_method n do |*o,&b|
+          cls.send :define_method, n do |*o,&b|
             ns.send mv[:symbol], self.to_ptr , *o, &b
           end
           
-          cls.alias_method mv[:alias], n if mv[:alias]
+          cls.send :alias_method, mv[:alias], n if mv[:alias]
         end        
       end
     end

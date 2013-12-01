@@ -1,4 +1,4 @@
-GirFFI::DEBUG[:VERBOSE]= 1==1
+GirFFI::DEBUG[:VERBOSE]= 0==1
 GirFFI.setup :Regress
 
 ## Covered:
