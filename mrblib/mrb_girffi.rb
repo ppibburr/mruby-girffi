@@ -60,6 +60,11 @@ module GirFFI
       _init_().reverse[10]
     end
     
+    def get_closure_argument
+      return nil unless takes_block?
+      _init_().reverse[6][1]
+    end
+    
     # Does this method take a block
     def takes_block?
       !_init_().reverse[6].empty?
@@ -160,7 +165,7 @@ module GirFFI
       module Callable
         def prep_arguments
           p [:prep_callable, symbol] if GirFFI::DEBUG[:VERBOSE]
-          
+          removed = []
           not_return = []
           
           returns = [
@@ -224,7 +229,7 @@ module GirFFI
               nulls[i] = a
               dropped[i] = a
             end
-
+            
             if (data = a.closure) >= 0
               x = has_cb
               x[0] = i
@@ -234,6 +239,9 @@ module GirFFI
               callbacks[i] = data
               dropped[i] = a
               take += 1
+              
+              removed << data
+              
               next
             end
             
@@ -246,17 +254,27 @@ module GirFFI
               callbacks[i] = data
               dropped[i] = a
               take += 1
+              
+              removed << data
+              
               next
             end
           
             if a.argument_type.interface.is_a?(GObjectIntrospection::ICallbackInfo)
-              callbacks[i] = nil
+              callbacks[i] = true
               dropped[i] = a
               take += 1
               next
             end       
             
             idx[i] = i-take  
+          end
+          
+          if has_cb.empty? and has_destroy.empty? and !callbacks.empty?
+            x = has_cb
+            x[0] = callbacks.keys.sort.first
+            x[1] = dropped[callbacks.keys.sort.first] 
+            x[2] = nil
           end
           
           lp = nil
@@ -275,10 +293,26 @@ module GirFFI
             break()
           end
           
-          if throws?
+          if !is_a?(GObjectIntrospection::ICallbackInfo) and throws?
             has_error = true
           end
+
+          removed.each do |i|
+            idx.delete(i)
+          end
           
+          q=[]
+          idx.each_pair do |k,v|
+            q << v
+          end
+          ri = q.sort.last || -1
+          
+          nulls.each_pair do |k,v|
+            next if callbacks[k]
+            next if idx[k]
+            idx[k] = ri += 1
+          end
+
           maxlen = minlen = args.length
           
           minlen -= 1 if !has_cb.empty?
@@ -350,6 +384,18 @@ module GirFFI
           idx.keys.sort.each do |i|
             result[i] = passed[idx[i]]
           end
+          
+          cnt = 0
+          optionals.each do |o|
+            cnt += 1
+            p [:optional,o]
+          end
+          
+          cnt = 0
+          nulls.each do |o|
+            cnt += 1
+            p [:null, o]
+          end          
     
           outs.keys.each do |i|
             result[i] = FFI::MemoryPointer.new(:pointer)
@@ -848,7 +894,7 @@ module GirFFI
           
           if m_data=data.get_methods.find do |m| m.name == f.to_s end
             m_data.extend GirFFI::Builder::MethodBuilder::Function
-            p f,:have
+     
             return m_data
           end
         end        
@@ -877,11 +923,27 @@ module GirFFI
           
           return nil unless have
           
-          prc = GirFFI::FunctionTool.new(info) do |*o,&b|
+          prc = GirFFI::FunctionTool.new(info) do |this,*o,&b|
             this.send m, *o, &b
           end
             
           return(prc)  
+        end
+        
+        def girffi_method m
+          info = find_function(m)
+          
+          return nil unless info
+          
+          info.extend GirFFI::Builder::MethodBuilder::Callable
+          
+          this = self
+        
+          prc = GirFFI::FunctionTool.new(info) do |*o,&b|
+            this.send m, *o, &b
+          end
+            
+          return(prc) 
         end
         
         # Instance methods of wrapped objects
@@ -1075,7 +1137,7 @@ module GirFFI
               values.push(en.to_sym,v.value)
             end
           end
-          p [n,values]
+         
           self::Lib.enum n,values
 
           return cls
@@ -1140,7 +1202,7 @@ module GirFFI
           if sci=info.parent
             sc = ::Object::const_get(sci.namespace.to_sym)::const_get(sci.name.to_sym)
           end
-p [:super,sc]
+
           cls = NC::define_class self, c, sc ? sc : GirFFI::Builder::ObjectBuilder::IsGObjectObject
           cls.send :include, GirFFI::Builder::ObjectBuilder::Interface::Implemented
 

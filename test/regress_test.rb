@@ -176,6 +176,7 @@ end
 assert("Regress::TestObj#set_bare") do
   obj = Regress::TestObj.new_from_file("bar")
   instance.set_bare obj
+  p [:ED,instance.get_property("bare"),obj]
   assert_equal instance.get_property("bare").to_ptr.address, obj.to_ptr.address
 end
 
