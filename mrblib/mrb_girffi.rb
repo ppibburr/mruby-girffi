@@ -333,7 +333,7 @@ module GirFFI
           lp = nil
           
           if idx.keys.length > 0
-            lp = idx.keys.find_all do |k| !nulls[k] end.length -1
+            lp = idx.keys.find_all do |k| !nulls[k] end.length() - 1
           end
           
           if lp
