@@ -1432,6 +1432,10 @@ end
 
 def GirFFI::Gdk()
   ::Gdk.const_missing(:GC)
+  
+  unless ::Object.const_defined?(:GdkPixbuf)
+    GirFFI.setup(:GdkPixbuf)
+  end   
 end
 
 # Convienience method to implement Gtk::Object on Gtk versions < 3.0.
@@ -1443,7 +1447,15 @@ def GirFFI.Gtk()
   
   unless ::Object.const_defined?(:Atk)
     GirFFI.setup(:Atk)
-  end  
+  end 
+  
+  unless ::Object.const_defined?(:Pango)
+    GirFFI.setup(:Pango)
+  end 
+  
+  unless ::Object.const_defined?(:Gio)
+    GirFFI.setup(:Gio)
+  end          
 
   version = GirFFI::REPO.get_version("Gtk").split(".").first.to_i
   ::Gtk.const_missing(:Object) if version < 3
@@ -1503,31 +1515,29 @@ end
 # Implement WebKit::DOMEventTarget#add_event_listener on WebKit versions > 1.0
 # Called if `WebKit` is to be setup 
 def GirFFI.WebKit()
+  version = GirFFI::REPO.get_version("WebKit").split(".").first.to_i
+
   unless ::Object.const_defined?(:Gtk)
-    GirFFI.setup(:Gtk)
+    GirFFI.setup(:Gtk, version > 1 ? 3.0 : 2.0)
   end
   
   unless ::Object.const_defined?(:Soup)
     GirFFI.setup(:Soup)
   end  
-
-  version = GirFFI::REPO.get_version("WebKit").split(".").first.to_i
   
-  if version > 1
-    WebKit::Lib.attach_function :webkit_dom_event_target_add_event_listener, [:pointer,:string,:pointer,:bool,:pointer], :bool
-        
-    mod = WebKit::DOMEventTarget
-    mod.class_eval do
-      define_method :add_event_listener do |name,bubble,&b|
-        cb=FFI::Closure.new([GObject::Object::StructClass,GObject::Object::StructClass],:void) do |*o|
-          o = o.map do |q|
-            GirFFI::upcast_object(q)
-          end
-          b.call *o
+  WebKit::Lib.attach_function :webkit_dom_event_target_add_event_listener, [:pointer,:string,:pointer,:bool,:pointer], :bool
+      
+  mod = WebKit::DOMEventTarget
+  mod.class_eval do
+    define_method :add_event_listener do |name,bubble,&b|
+      cb=FFI::Closure.new([GObject::Object::StructClass,GObject::Object::StructClass],:void) do |*o|
+        o = o.map do |q|
+          GirFFI::upcast_object(q)
         end
-
-        WebKit::Lib.webkit_dom_event_target_add_event_listener(self.to_ptr,name,cb,bubble,nil.to_ptr)
+        b.call *o
       end
+
+      WebKit::Lib.webkit_dom_event_target_add_event_listener(self.to_ptr,name,cb,bubble,nil.to_ptr)
     end
   end
 end
