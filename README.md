@@ -9,9 +9,12 @@
 [gobject]: https://developer.gnome.org/gobject/stable/
 [glib]: https://developer.gnome.org/glib/stable/
 [mrb-glib2]: https://github.com/ppibburr/mruby-glib2/
+[mrb-gobject]: https://github.com/ppibburr/mruby-gobject/
 [mrb-gtk2]: https://github.com/ppibburr/mruby-gtk2/
 [mrb-gtk3]: https://github.com/ppibburr/mruby-gtk3/
-
+[mrb-webkit-1]: https://github.com/ppibburr/mruby-webkit-1/
+[mrb-webkit-3]: https://github.com/ppibburr/mruby-webkit-3/
+[mrb-girffi-docgen]: https://github.com/ppibburr/mruby-girffi-docgen/
 Synopsis
 ===
 [MRuby][mruby] library that provides complete API access to C libraries introspectable by [GObjectIntropsection][gir]
@@ -25,9 +28,12 @@ Some niceness is built in mruby-girffi for GObject, Gtk >= 2.0, WebKit >= 1.0
 Typically when the Rubyifcation of an api goes out the scope of core mruby-girffi I create these. 
 
 Thus far:  
-* [mruby-glib2][mrb-glib2] Adds classes to rubyfy the API and fix incorrect introspection data
-* [mruby-gtk2][mrb-gtk2] Lowers the learning curve from the CRuby bindings
-* [mruby-gtk3][mrb-gtk3] Lowers the learning curve from the CRuby bindings
+* [mruby-glib2][mrb-glib2]
+* [mruby-gobject][mrb-gobject]
+* [mruby-gtk2][mrb-gtk2]
+* [mruby-gtk3][mrb-gtk3]
+* [mruby-webkit-1][mrb-webkit-1]
+* [mruby-webkit-3][mrb-webkit-3]
 
 Requirements
 ===
@@ -70,6 +76,7 @@ Features
 * Built in enhancements for `GObject`, `Gtk` and `WebKit`
 * Ruby style method invokation. `(self, string_required, may_be_null, callback, out_param)` becomes `(string, *o, &b)`.
 * Instantly write applications using the latest GObject based libraries. (nightly builds, even your own, if you compile your own typelibs)
+* Generate documentation for built libraries with [mruby-girffi-docgen][mrb-girffi-docgen]
 
 Cons
 ===
