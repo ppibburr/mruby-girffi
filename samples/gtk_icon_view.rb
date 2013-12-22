@@ -1,6 +1,6 @@
 GirFFI.setup :Gtk
 GirFFI.setup :'GdkPixbuf'
-Gtk::init 0,nil
+Gtk::init 
 Icons = [Gtk::STOCK_OPEN, Gtk::STOCK_NEW, Gtk::STOCK_SAVE, Gtk::STOCK_CLOSE, Gtk::STOCK_PRINT]
 Gtk::const_missing :IconView
 Gtk::ListStore
@@ -32,10 +32,10 @@ class IconView
     
     type = GObject::type_from_name(GdkPixbuf::Pixbuf.data.type_name)
     string = GObject::type_from_name("gchararray")
+GirFFI::DEBUG[:VERBOSE] = true
 
-
-    liststore = Gtk::ListStore.new(2,[type,string])
-    iconview = Gtk::IconView.new_with_model(liststore)
+    p liststore = Gtk::ListStore.newv(2,[type,string])
+    p iconview = Gtk::IconView.new_with_model(liststore)
 
     iconview.set_pixbuf_column(0)
     iconview.set_text_column(1)

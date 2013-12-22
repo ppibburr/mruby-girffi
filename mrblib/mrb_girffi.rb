@@ -1,5 +1,5 @@
 module GirFFI
-  DEBUG = {:VERBOSE=>true}
+  DEBUG = {:VERBOSE=>0==1}
 
   # IRepository to use for introspection
   REPO = GObjectIntrospection::IRepository.default
@@ -94,20 +94,31 @@ module GirFFI
         end
         
         return nil if ptr.is_null?
-      
+     
         if flattened_tag == :object
           if i and info_a
             if info_a[i].direction == :out
               ptr = ptr.get_pointer(0)
             end
           end
-          
+        
           return nil if ptr.is_null?
+        
+          c = GirFFI::upcast_object(ptr)
+          return(c)
           
-          cls = ::Object.const_get(ns=interface.namespace.to_sym).const_get(n=interface.name.to_sym)
-          ins = cls.wrap(ptr)
+        elsif flattened_tag == :struct
+          if i and info_a
+            if info_a[i].direction == :out
+              ptr = ptr.get_pointer(0)
+            end
+          end
           
-          return(GirFFI::upcast_object(ins.to_ptr))
+          return nil if ptr.is_null?        
+        
+          iface = get_struct
+          q = ::Object.const_get(iface.namespace).const_get(iface.name)
+          return q.wrap(ptr)
           
         elsif tag == :array
           if (len_i=array_length) > 0
@@ -800,7 +811,7 @@ module GirFFI
         
         def self.new *o,&b
           if f=find_function(:new)
-            return wrap(method_missing(:new,*o,&b))
+            return method_missing(:new,*o,&b)
           end
           
           super
@@ -1053,7 +1064,7 @@ module GirFFI
 
           get(n, pt)
           
-          if pi.object?
+          if pi.property_type.object?
             return nil if pt.get_pointer(0).is_null?
             
             return GirFFI::upcast_object(pt.get_pointer(0))
@@ -1304,17 +1315,25 @@ module GirFFI
     
     return cls
   end
-
+  
+  class TypeClass < FFI::Struct
+    layout :g_type, :uint32
+  end
+  class TypeInstance < FFI::Struct
+    layout :g_type_class, TypeClass
+  end
+  
   # @param ins [FFI::Pointer,#to_ptr, #pointer]
   # return the GType of instance, +ins+
   def self.type_from_instance ins
     ins = ins.to_ptr if ins.respond_to?(:to_ptr)    
     ins = ins.pointer if ins.respond_to?(:pointer) 
-      
-    type = GObject::type_name_from_instance(ins)
     
-    type = GObject::type_from_name(type)
-    
+    type = GObject::Object.wrap(ins).get_struct[:g_type_instance]
+    type = TypeInstance.new(type)
+    type = type[:g_type_class]
+    type = type[:g_type]   
+
     return type  
   end
 
@@ -1332,8 +1351,10 @@ module GirFFI
   # many functions in libraries based on GObject return casts to the lowest common GType
   # this ensures that, in this example, an instance of Gtk::Button would be returned 
   def self.upcast_object w
-    #return w
-    type = type_from_instance(w)
+    ins = w.to_ptr if w.respond_to?(:to_ptr)    
+    ins = w.pointer if w.respond_to?(:pointer) 
+    ins = w unless ins
+    type = type_from_instance(ins)
     
     return w if type == 0
     
@@ -1343,7 +1364,7 @@ module GirFFI
     
     return w if w.is_a?(GirFFI::Builder::ObjectBuilder::IsAnObject) and w.is_a?(cls)
 
-    return cls.wrap(w)
+    return cls.wrap(ins)
   end  
   
   # Makes an namespace +ns+ available
@@ -1464,6 +1485,7 @@ def GirFFI.Gtk()
 end
 
 def GirFFI.GLib()
+  GLib::Lib.attach_function :g_dir_open,         [:string,:int,:pointer], :pointer
   GLib::Lib.attach_function :g_file_get_contents,[:string,:pointer,:pointer,:pointer],:bool
   GLib::Lib.attach_function :g_file_set_contents,[:string,:string,:int,:pointer],:bool
     
@@ -1471,6 +1493,32 @@ def GirFFI.GLib()
     # Setup GLib::Error
     NC::define_class self,:Error,GObjectIntrospection::GError
   
+    self::const_missing :Dir
+    self::Dir.class_eval do
+      def self.open path
+        res=GLib::Lib.g_dir_open(path,0,nil.to_ptr)
+        return wrap(res)
+      end
+      
+      def entries
+        a = []
+        
+        while r=read_name
+          a << r
+        end
+        
+        rewind
+        
+        return a
+      end
+      
+      def each
+        entries.each do |e|
+          yield e
+        end
+      end
+    end
+   
     # Introspection info has contents being an `array of `uint8``
     # However, contents should be `utf8` implying `string`
     def self.file_get_contents path
@@ -1598,6 +1646,71 @@ def GirFFI.describe h
           cls.send :alias_method, mv[:alias], n if mv[:alias]
         end        
       end
+    end
+  end
+end
+
+module Boolean; end
+class TrueClass; include Boolean; end
+class FalseClass; include Boolean; end
+
+class ::Class
+  def girffi_gtype
+    type = GirFFI::R2GTypeMap[self]
+    return type if type
+  end
+end
+
+module FFI
+  class Pointer
+    def ffi_value
+      self
+    end
+  end
+  
+  class Struct
+    def ffi_value
+      self.pointer
+    end
+  end
+  
+  class Union
+    def ffi_value
+      self.pointer
+    end  
+  end
+end
+
+module GirFFI
+  R2GTypeMap = {}
+  R2FFITypeMap = {
+    String => :"gchararray",
+    Float => :"gfloat",
+    Integer => :"gint",
+    Boolean => :"gboolean"
+  }
+  
+  R2FFITypeMap.each do |q|
+    R2GTypeMap[q[0]] = GObject::type_from_name(q[1].to_s)
+    
+    type = GObjectIntrospection::ITypeInfo::TYPE_MAP[q[1]]
+    
+    q[0].send :define_method, :ffi_value do
+      ptr = FFI::MemoryPointer.new(:pointer)
+      ptr.send "write_#{type}", self
+      next ptr
+    end
+  end
+  
+  def self.gtype q
+    if q.is_a?(String)
+      return GObject::type_from_name q
+    elsif q.is_a?(Symbol)
+      return GObject::type_from_name q.to_s
+    elsif r=R2GTypeMap[q]
+      return r
+    else
+      return nil
     end
   end
 end
