@@ -575,6 +575,10 @@ module GirFFI
               !take_a.index(i)
             end
             
+            if is_a?(GObjectIntrospection::ISignalInfo)
+              o.shift
+            end
+            
             retv = b.call(*o)
             
             next retv
@@ -1082,15 +1086,27 @@ module GirFFI
         end
       
         def self.find_signal s
-          if info = find_inherited(:class, :fields, s)
-            info = info.field_type.interface    
+          s = s.split("_").join("-")
+          
+          if info = find_inherited(:object, :signals, s)
+            def info.throws?
+              false
+            end
             info.extend GirFFI::Builder::MethodBuilder::Callable  
             return info
           end
           
           return nil
         end
-      
+        
+        def self.signals
+          a = data.signals.map do |s| 
+            s.name
+          end     
+          
+          return a   
+        end
+                
         def self.get_signal(s)
           return find_signal s
         end
