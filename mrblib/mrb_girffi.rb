@@ -1713,4 +1713,95 @@ module GirFFI
       return nil
     end
   end
+  
+  def self.coerce_pointer(v)
+    if v.respond_to?(:to_ptr) 
+      return v.to_ptr
+    elsif v.respond_to?(:pointer)
+      return v.pointer
+    elsif v.is_a?(FFI::Pointer)
+      return v
+    end
+    
+    raise "Cannot coerce instance of #{v.class} to FFI::Pointer"
+  end
+  
+  def self.gtype_value2ruby type,v
+    if GObject::type_is_a(type,GObject::TYPE_OBJECT)
+        return GirFFI::upcast_object(v)
+    end
+    
+    case type
+    when GObject::TYPE_INT
+      return v.read_int
+    when GObject::TYPE_UINT
+      return v.read_uint
+    when GObject::TYPE_INT64
+      return v.read_int64
+    when GObject::TYPE_UINT64
+      return v.read_uint64
+    when GObject::TYPE_FLOAT
+      return v.read_float
+    when GObject::TYPE_DOUBLE
+      return v.read_double
+    when GObject::TYPE_LONG
+      return v.read_long
+    when GObject::TYPE_ULONG
+      return v.read_ulong
+    when GObject::TYPE_STRING
+      return v.read_string
+    end
+    
+    return v
+  end
+  
+  RTYPE2GTYPE = {
+    Float           => GObject::TYPE_FLOAT,
+    Integer         => GObject::TYPE_INT,
+    String          => GObject::TYPE_STRING,
+    TrueClass       => GObject::TYPE_BOOLEAN,
+    FalseClass      => GObject::TYPE_BOOLEAN,
+    GObject::Object => GObject::TYPE_OBJECT
+  }
+  
+  # Generic defaults to get the GType of +v+.
+  # @note All Integer's will be GObject::TYPE_INT
+  # @note All Floats's will be GObject::TYPE_FLOAT
+  # @note Descendants of GObject::Object will return GObject::TYPE_OBJECT
+  def self.gtype_from_ruby_class(cls)
+    if cls.ancestors.index(GObject::Object)
+      return GObject::TYPE_OBJECT
+    end
+  
+    return RTYPE2GTYPE[cls]
+  end
+  
+  # Generic defaults to get the GType of +v+.
+  # @note All Integer's will be GObject::TYPE_INT
+  # @note All Floats's will be GObject::TYPE_FLOAT
+  # @note Descendants of GObject::Object will return GObject::TYPE_OBJECT
+  def self.gtype_from_ruby_value(v)
+    if v.is_a?(GObject::Object)
+      return type_from_instance(v)
+    end
+  
+    gtype_from_ruby_class(v.class)
+  end
+end
+
+module GObject
+  {
+    :OBJECT => "GObject",
+    :STRING => "gchararray",
+    :FLOAT  => "gfloat",
+    :DOUBLE => "gdouble",
+    :INT    => "gint",
+    :UINT   => "guint",
+    :INT64  => "gint64",
+    :UINT64 => "guint64",
+    :LONG   => "glong",
+    :ULONG  => "gulong"
+  }.each do |n,q|
+    const_set(:"TYPE_#{n}", GObject::type_from_name(q))
+  end
 end
