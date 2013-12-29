@@ -172,6 +172,30 @@ module GirFFI
       end
     end
     
+    module SignalBuilder
+      module Signal
+        def full_signature
+          a,r = get_signature()
+          
+          if is_a?(GObjectIntrospection::ISignalInfo)
+            return [GObject::Object::StructClass].push(*a),r
+          else
+            return a,r
+          end
+        end
+        
+        def exposed_params
+          if is_a?(GObjectIntrospection::ISignalInfo)
+            return args
+          else
+            a=args
+            a.shift
+            return a
+          end
+        end      
+      end
+    end
+    
     module MethodBuilder
       module Callable
         def prep_arguments
@@ -542,8 +566,12 @@ module GirFFI
           return params,ret
         end
         
+        def full_signature
+          get_signature
+        end
+        
         def make_closure &b
-          at,ret = get_signature
+          at,ret = full_signature
           
           cb=FFI::Closure.new(at,ret) do |*o|
             i = -1
@@ -575,7 +603,7 @@ module GirFFI
               !take_a.index(i)
             end
             
-            if is_a?(GObjectIntrospection::ISignalInfo)
+            if is_a?(GirFFI::Builder::SignalBuilder::Signal)
               o.shift
             end
             
@@ -1086,13 +1114,31 @@ module GirFFI
         end
       
         def self.find_signal s
-          s = s.split("_").join("-")
+          # Use the ObjectClass field when possible
+          # as thier documentations is better
+          qs = s.split("-").join("_")
+          this = self
+          if get_object_class && info = find_inherited(:class,:fields,qs)
+            if info = info.field_type.interface
+              info.singleton_class.define_method :true_stops_emit do
+                ds = name.split("_").join("-")
+                this.find_inherited(:object,:signals,ds).true_stops_emit
+              end
+            
+              info.extend GirFFI::Builder::MethodBuilder::Callable 
+              info.extend GirFFI::Builder::SignalBuilder::Signal                           
+              return info
+            end
+          end
           
+          # No field found
+          s = s.split("_").join("-")
           if info = find_inherited(:object, :signals, s)
             def info.throws?
               false
             end
-            info.extend GirFFI::Builder::MethodBuilder::Callable  
+            info.extend GirFFI::Builder::MethodBuilder::Callable
+            info.extend GirFFI::Builder::SignalBuilder::Signal  
             return info
           end
           
