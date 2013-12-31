@@ -267,15 +267,28 @@ module GirFFI
             
             if (data = a.closure) >= 0
               x = has_cb
-              x[0] = i
-              x[1] = a
-              x[2] = args_[data]
+                            
+              if args_[data].argument_type.interface.is_a?(GObjectIntrospection::ICallbackInfo)
+                x[0] = data
+                x[1] = args_[data]
+                x[2] = args_[i]
+                
+                callbacks[data] = i
+                dropped[data] = args_[data]
+                
+                removed << i
+              else
+                x[0] = i
+                x[1] = a
+                x[2] = args_[data]
+                
+                callbacks[i] = data
+                dropped[i] = a
+                
+                removed << data              
+              end
               
-              callbacks[i] = data
-              dropped[i] = a
               take += 1
-              
-              removed << data
               
               next
             end
@@ -453,6 +466,10 @@ module GirFFI
           arrays.keys.each do |i|
             q = result[i]
             
+            if q.is_a?(String)
+              q = q.bytes
+            end
+            
             next unless q
             
             next if q.is_a?(FFI::Pointer)
@@ -460,13 +477,16 @@ module GirFFI
             type = args_[i].argument_type.element_type
             type = GObjectIntrospection::ITypeInfo::TYPE_MAP[type]
             
-            ptrs = q.map {|m| 
-              sp = FFI::MemoryPointer.new(type)
-              sp.send "write_#{type}", m
-            }
+            #ptrs = q.map {|m| 
+              #sp = FFI::MemoryPointer.new(type)
+              #sp.send "write_#{type}", m
+            #}
             
-            block = FFI::MemoryPointer.new(:pointer, ptrs.length)
-            block.write_array_of_pointer ptrs
+            #block = FFI::MemoryPointer.new(:, ptrs.length)
+            #block.write_array_of_pointer ptrs            
+            
+            block = FFI::MemoryPointer.new(type, q.length)
+            block.send "write_array_of_#{type}", q
             
             case args_[i].direction
             when :inout
@@ -522,7 +542,9 @@ module GirFFI
         #
         # @return Array of [Array<argument_types>, return_type]
         def get_signature
+          i = -1
           params = args.map do |a|
+            i += 1
             if [:inout,:out].index(a.direction)
               next :pointer
             end
@@ -544,7 +566,6 @@ module GirFFI
             
             # not enum
             q = a.get_ffi_type()
-            
             q = :pointer if q == :void
             
             next q
@@ -1619,6 +1640,18 @@ def GirFFI.GLib()
       
       return ret
     end
+  end
+end
+
+def GirFFI.Soup()
+  Soup::Lib.attach_function :soup_server_new, [:string,:int] ,Soup::Server::StructClass
+
+  Soup::Server
+
+  cls = Soup::Server
+  cls.singleton_class.define_method :new do |port = Soup::SERVER_PORT_ANY|
+    ptr = Soup::Lib::soup_server_new(Soup::SERVER_PORT, port)
+    self.wrap(ptr)
   end
 end
 
