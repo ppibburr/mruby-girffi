@@ -128,7 +128,7 @@ module GirFFI
           
             len_info.extend GirFFI::Builder::Value
             len = len_info.get_ruby_value(rv_a[len_i])
-                                  
+                              
             ary = ptr.send("read_array_of_#{type}", len)
 
             return ary, len_i
@@ -151,7 +151,15 @@ module GirFFI
             return ary
             
           else
-            ary = ptr.send("read_array_of_#{type}", array_length)
+            type = element_type
+            case (ai=info_a[array_length]).direction
+            when :out
+              len = rv_a[array_length].get_pointer(0).read_int32
+            else
+              len = rv_a[array_length].read_int32
+            end
+            type = GObjectIntrospection::ITypeInfo::TYPE_MAP[type]
+            ary = ptr.send("read_array_of_#{type}", len)
             return ary
           end
           
@@ -235,6 +243,8 @@ module GirFFI
             if a.argument_type.array_length >= 0
               not_return << i
             end
+
+            not_return << i if return_type.array_length == i
             
             if a.direction == :out or a.direction == :inout
               return_values << a unless not_return.index(i)
@@ -275,7 +285,7 @@ module GirFFI
                 
                 callbacks[data] = i
                 dropped[data] = args_[data]
-                
+                dropped[i] = a
                 removed << i
               else
                 x[0] = i
@@ -284,7 +294,7 @@ module GirFFI
                 
                 callbacks[i] = data
                 dropped[i] = a
-                
+                dropped[data] = args_[data]
                 removed << data              
               end
               
@@ -530,6 +540,11 @@ module GirFFI
           if this
             result = [this].push(*result)
           end
+          
+          dropped.keys.each do |i|
+            i += 1 if method?
+            result[i] ||= nil
+          end
 
           return result, inouts, outs, return_values, has_error
         end    
@@ -694,7 +709,8 @@ module GirFFI
           # only the values to be returned
           w.each do |q|
             i += 1
-            next unless inouts.keys.index(i) or outs.keys.index(i)  
+            next unless inouts.keys.index(i) or outs.keys.index(i)
+            next if return_type.array_length == i 
             next if take_a.index(i)
             
             q = w[i]  
@@ -716,7 +732,10 @@ module GirFFI
           
           # Do we inlcude the result in the return values?
           if !skip_return?
-            result = info.get_ruby_value(result)
+            q = o
+            q.shift if method?
+
+            result = info.get_ruby_value(result,nil,q,args())
 
             if ret != :void 
               returns = [result].push *returns
@@ -1120,7 +1139,12 @@ module GirFFI
           if pi.property_type.object?
             return nil if pt.get_pointer(0).is_null?
             
-            return GirFFI::upcast_object(pt.get_pointer(0))
+            ns = pi.property_type.get_object.namespace
+            n  = pi.property_type.get_object.name
+            
+            cls = ::Object.const_get(ns).const_get(n)
+            
+            return GirFFI::upcast_object(pt.get_pointer(0),cls)
           end
           
           if mrb
@@ -1390,7 +1414,9 @@ module GirFFI
   # @return [Class] wrapping Gtype, type
   def self.class_from_type type
     info = GirFFI::REPO.find_by_gtype(type)
-
+    
+    return nil unless info
+    
     ns = info.namespace
     n  = info.name
     
@@ -1433,17 +1459,24 @@ module GirFFI
   #
   # many functions in libraries based on GObject return casts to the lowest common GType
   # this ensures that, in this example, an instance of Gtk::Button would be returned 
-  def self.upcast_object w
+  def self.upcast_object w, cls_=nil
     ins = w.to_ptr if w.respond_to?(:to_ptr)    
     ins = w.pointer if w.respond_to?(:pointer) 
     ins = w unless ins
     type = type_from_instance(ins)
     
-    return w if type == 0
+    if (type == 0 or !type)
+      return w if !cls_
     
-    return w if !type
-      
+      return cls_.wrap(ins) if cls_
+    end
+    
     cls = class_from_type(type)  
+    
+    if !cls
+      return cls_.wrap(ins) if cls_
+      return w
+    end
     
     return w if w.is_a?(GirFFI::Builder::ObjectBuilder::IsAnObject) and w.is_a?(cls)
 
@@ -1494,7 +1527,7 @@ module GObject
   # Force load of GObject::Object 
   # constants of name :Object, must always be force loaded
   const_missing :Object
-  p const_missing(:Binding)
+  const_missing(:Binding)
   
   
   GObject::Lib.attach_function :g_object_set, [:pointer,:string,:pointer,:pointer], :void
