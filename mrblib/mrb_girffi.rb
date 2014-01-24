@@ -437,7 +437,7 @@ module GirFFI
           minlen,        # mininum amount of args
           maxlen,        # max amount of args
           has_error =    # indicates if we should raise          
-          prep_arguments()
+          (@prep ||= prep_arguments())
 
           this = nil
           if method?
@@ -557,6 +557,10 @@ module GirFFI
         #
         # @return Array of [Array<argument_types>, return_type]
         def get_signature
+          if @signature
+            return @signature
+          end
+        
           i = -1
           params = args.map do |a|
             i += 1
@@ -599,7 +603,7 @@ module GirFFI
             ret = get_ffi_type      
           end
 
-          return params,ret
+          return @signature = params,ret
         end
         
         def full_signature
@@ -613,6 +617,10 @@ module GirFFI
             i = -1
             
             take_a = []
+          
+            if is_a?(GirFFI::Builder::SignalBuilder::Signal)
+              o.shift
+            end
           
             # Get the Ruby value's
             # Some values can be omitted
@@ -639,10 +647,6 @@ module GirFFI
               !take_a.index(i)
             end
             
-            if is_a?(GirFFI::Builder::SignalBuilder::Signal)
-              o.shift
-            end
-            
             retv = b.call(*o)
             
             next retv
@@ -665,7 +669,7 @@ module GirFFI
         # @return The result of calling the function
         def call *o,&b
           args,ret = (@signature ||= get_signature())
-          
+          @obj ||= container ? (@ns||=::Object.const_get(namespace)).const_get(container.name) : nil
           o, inouts, outs, return_values, error = ruby_style_arguments(*o,&b)
 
           error.write_pointer(FFI::Pointer::NULL) if error
@@ -674,9 +678,9 @@ module GirFFI
 
           p [:call, symbol, [args,ret], return_values, [:error, !!error], o] if GirFFI::DEBUG[:VERBOSE]
 
-          ns = ::Object.const_get(namespace.to_sym)
+          @ns ||= ::Object.const_get(namespace.to_sym)
 
-          result = ns::Lib.invoke_function(self.symbol.to_sym,*(o.map do |qi| qi.respond_to?(:to_ptr) ? qi.to_ptr : qi end))
+          result = @ns::Lib.invoke_function(self.symbol.to_sym,*(o.map do |qi| qi.respond_to?(:to_ptr) ? qi.to_ptr : qi end))
 
           if result.is_a?(FFI::Pointer)
             result = nil if result.is_null?
@@ -704,19 +708,27 @@ module GirFFI
           else
             w=o
           end
+          
+          @at ||= []
 
           # conversion
           # only the values to be returned
-          w.each do |q|
-            i += 1
+          w.size.times do |i|
+            q = w[i]
+            
             next unless inouts.keys.index(i) or outs.keys.index(i)
             next if return_type.array_length == i 
             next if take_a.index(i)
             
-            q = w[i]  
-            info = arg(i).argument_type
+            q = w[i]
             
-            info.extend GirFFI::Builder::Value
+            info = @at[i]
+            
+            if !@at[i]  
+              @at[i] = arg(i).argument_type
+            
+              info.extend GirFFI::Builder::Value
+            end
             
             val, take = info.get_ruby_value(q,i,w,args())
             
@@ -727,16 +739,22 @@ module GirFFI
 
           returns = aa
           
-          info = return_type
-          info.extend GirFFI::Builder::Value
+          if !@rinfo
+            @rinfo = return_type
+            @rinfo.extend GirFFI::Builder::Value
+          end
           
           # Do we inlcude the result in the return values?
-          if !skip_return?
+          if !(@skip ||= skip_return?)
             q = o
             q.shift if method?
-
-            result = info.get_ruby_value(result,nil,q,args())
-
+            
+            if constructor?
+              result = @obj.wrap result
+            else
+              result = @rinfo.get_ruby_value(result,nil,q,args())
+            end
+            
             if ret != :void 
               returns = [result].push *returns
             end            
@@ -825,7 +843,7 @@ module GirFFI
         # @param f [#to_s] the name of the function
         # @return GObjectIntrospection::IFunctionInfo
         def self.find_function f
-          if m_data=data.get_methods.find do |m| m.name == f.to_s end
+          if m_data=(@_m_ ||= data.get_methods).find do |m| m.name == f.to_s end
             m_data.extend GirFFI::Builder::MethodBuilder::Function
 
             return m_data
@@ -959,7 +977,7 @@ module GirFFI
         #
         # @return [Array] of method names 
         def girffi_instance_methods
-          data.get_methods.find_all do |m| m.method? end.each do |m|
+          (@_m_ ||= data.get_methods).find_all do |m| m.method? end.each do |m|
             # Stub
             define_method m.name do |*o,&b|
               self.class.girffi_instance_method(m.name)
@@ -988,7 +1006,7 @@ module GirFFI
         # @return GObjectIntrospection::IFunctionInfo
         def find_function f
           
-          if m_data=data.get_methods.find do |m| m.name == f.to_s end
+          if m_data=(@_m_ ||= data.get_methods).find do |m| m.name == f.to_s end
             m_data.extend GirFFI::Builder::MethodBuilder::Function
      
             return m_data
@@ -1105,7 +1123,7 @@ module GirFFI
           pi = self.class.find_property(n)
           pt=FFI::MemoryPointer.new(:pointer)
           
-          if pi.object?
+          if pi.property_type.object?
             if v.respond_to?(:to_ptr)
               pt.write_pointer v.to_ptr
             elsif v.is_a?(FFI::Pointer)
@@ -1118,6 +1136,14 @@ module GirFFI
           pt.send("write_#{ft}",v)
           
           set(n,pt)
+        end
+        
+        def self.properties
+          @data.properties.map do |i| i.name end
+        end
+        
+        def self.get_property(n)
+          find_property(n)
         end
       
         
@@ -1686,6 +1712,15 @@ def GirFFI.Soup()
     ptr = Soup::Lib::soup_server_new(Soup::SERVER_PORT, port)
     self.wrap(ptr)
   end
+  
+  Soup::Lib.attach_function :soup_session_send_finish, [:pointer,:pointer], :pointer
+  Soup::Session.class_eval do
+    def send_finish a
+      
+      res = Soup::Lib.soup_session_send_finish(self.to_ptr, a)
+      Gio::InputStream.wrap res
+    end
+  end  
 end
 
 # Implement WebKit::DOMEventTarget#add_event_listener on WebKit versions > 1.0
