@@ -2,11 +2,12 @@ require 'fileutils'
 
 if ARGV.delete("--rb")
   MRB = false
+  RB_PATH = ENV["RB_PATH"] || "ruby"
 else
   MRB = true
+  RB_PATH = ENV["RB_PATH"] || "../mruby/bin/mruby"  
 end
 
-RB_PATH = ENV["RB_PATH"] || "../mruby/bin/mruby"
 
 def test
   FileUtils.mkdir_p "./tmp/lib"

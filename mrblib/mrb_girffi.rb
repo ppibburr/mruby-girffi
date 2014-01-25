@@ -169,7 +169,11 @@ module GirFFI
         elsif (type = get_ffi_type) != :pointer
           if i and info_a
             if info_a[i].direction == :out
-              ptr = ptr.get_pointer(0)
+              ## Had this here ...
+              ## It broke CRuby ...
+              ## and mruby still works
+              #
+              # ptr = ptr.get_pointer(0)
             end
           end
           
@@ -530,7 +534,7 @@ module GirFFI
               if i == has_cb[0]
                 result[i] = info.make_closure(&b)
               else
-                result[i] = FFI::Closure.new([],:void)
+                result[i] = FFI::Closure.new([],:void) do end
               end
             else
               result[i] = info.make_closure(&b)
@@ -727,7 +731,7 @@ module GirFFI
             info = @at[i]
             
             if !@at[i]  
-              @at[i] = arg(i).argument_type
+              info = @at[i] = arg(i).argument_type
             
               info.extend GirFFI::Builder::Value
             end
@@ -1203,11 +1207,13 @@ module GirFFI
           this = self
           if get_object_class && info = find_inherited(:class,:fields,qs)
             if info = info.field_type.interface
-              info.singleton_class.define_method :true_stops_emit do
-                ds = name.split("_").join("-")
-                this.find_inherited(:object,:signals,ds).true_stops_emit
+              info.singleton_class.class_eval do
+                define_method :true_stops_emit do
+                  ds = name.split("_").join("-")
+                  this.find_inherited(:object,:signals,ds).true_stops_emit
+                end
               end
-            
+              
               info.extend GirFFI::Builder::MethodBuilder::Callable 
               info.extend GirFFI::Builder::SignalBuilder::Signal                           
               return info
@@ -1302,7 +1308,7 @@ module GirFFI
               v = info.value(i)
               en = v.name
               q = en.upcase
-              if q.bytes[0] <= 57 and q.bytes[0] >= 48
+              if q.bytes.to_a[0] <= 57 and q.bytes.to_a[0] >= 48
                 q = "GTK_#{q}"
               end
               const_set :"#{q}", v.value
@@ -1723,9 +1729,11 @@ def GirFFI.Soup()
   Soup::Server
 
   cls = Soup::Server
-  cls.singleton_class.define_method :new do |port = Soup::SERVER_PORT_ANY|
-    ptr = Soup::Lib::soup_server_new(Soup::SERVER_PORT, port)
-    self.wrap(ptr)
+  cls.singleton_class.class_eval do
+    define_method :new do |port = Soup::SERVER_PORT_ANY|
+      ptr = Soup::Lib::soup_server_new(Soup::SERVER_PORT, port)
+      self.wrap(ptr)
+    end
   end
   
   Soup::Lib.attach_function :soup_session_send_finish, [:pointer,:pointer], :pointer
@@ -1804,11 +1812,12 @@ def GirFFI.describe h
   (h[:define][:classes] ||= {}).each_pair do |c,cv|
     ns.module_eval do
       cls = NC::define_class ns, c, ::Object
-      
+      p cls
       cls.class_eval do
         # class functions
         (cv[:class_methods] ||= {}).each_pair do |n,mv|
           cls.singleton_class.send :define_method, n do |*o,&b|
+            p ns
             ns.send mv[:symbol],*o,&b
           end
           
