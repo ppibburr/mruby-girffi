@@ -75,3 +75,57 @@ end
 Gtk.main
 ```
 `ruby path/to/example.rb --GFFI_GLIB --GFFI_GTK3`
+
+Reasoning
+===
+MRUBY debugging still a pain.  
+Nice to be portable.  
+
+Performance
+===
+Speeds on MRI are fast!  
+I'm not even targeting MRI.  
+I believe the limitations MRUBY imposes forces the use implicitly faster code
+
+heres the result of mruby-girffi script creating a Gtk window, connecting a signal handler to exit on the event 'event' 
+```bash
+ppibburr@ppibburr-Inspiron-N5050:~/git/mruby-girffi$ time ruby -r ./tools/mri/loader.rb ~/tl.rb --MRUBY
+
+real	0m0.200s
+user	0m0.172s
+sys	0m0.020s
+```
+
+Compare that to ruby-gir-ffi: a library targeting MRI
+
+```bash
+ppibburr@ppibburr-Inspiron-N5050:~/git/mruby-girffi$ time ruby -rgir_ffi ~/tl.rb
+
+real	0m0.605s
+user	0m0.572s
+sys	0m0.024s
+```
+
+It' interesting to note that in ruby-gir-ffi lack the ruby style method invocation that I've implemented.
+* ruby-gir-ffi
+
+```ruby
+# void some_foo_cb();
+# GObject*
+# some_foo_hop(GObject* self, const char* omit1, int required1, some_foo_cb cb, int omit2, int omit3)
+some_foo.hop(nil, 1, (Proc.new do end), nil, nil)
+```
+
+This is automatically implemented
+* mruby-girffi
+
+```ruby
+# void some_foo_cb();
+# GObject*
+# some_foo_hop(GObject* self, const char* omit1, int required1, some_foo_cb cb, int omit2, int omit3)
+
+some_foo.hop(1) do end
+some_foo.hop(1, "foo") do end
+some_foo.hop(1, nil, 4) do end
+some_foo.hop(1, "foo", nil, 4, 5) do end
+```
