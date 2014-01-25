@@ -615,11 +615,11 @@ module GirFFI
           
           cb=FFI::Closure.new(at,ret) do |*o|
             i = -1
-            
             take_a = []
           
             if is_a?(GirFFI::Builder::SignalBuilder::Signal)
               o.shift
+              i=0
             end
           
             # Get the Ruby value's
@@ -631,9 +631,9 @@ module GirFFI
                 
               info = arg(i).argument_type
               info.extend GirFFI::Builder::Value
-                
+
               val, take = info.get_ruby_value(q,i,o,args())
-              
+
               take_a << take if take
               
               next val
@@ -941,7 +941,15 @@ module GirFFI
           sc = NC::define_class self, :StructClass, FFI::Struct
           sc.extend GirFFI::Builder::ObjectBuilder::StructClass
           
-          q=data.fields.map do |f| [f.name.to_sym, (t=f.field_type.get_ffi_type)  == :void ? :pointer : t] end
+          q=data.fields.map do |f|
+            type = f.field_type.tag
+            
+            if type == :interface and f.field_type.interface.is_a?(GObjectIntrospection::IFlagsInfo)
+              type = :uint32
+            end
+
+            [f.name.to_sym, type == :void ? :pointer : type]
+          end
           q = q.flatten
           
           sc.layout *q
@@ -1289,8 +1297,11 @@ module GirFFI
             for i in 0..info.n_values-1
               v = info.value(i)
               en = v.name
-        
-              const_set :"#{en.upcase}", v.value
+              q = en.upcase
+              if q.bytes[0] <= 57 and q.bytes[0] >= 48
+                q = "GTK_#{q}"
+              end
+              const_set :"#{q}", v.value
               values.push(en.to_sym,v.value)
             end
           end
@@ -1572,7 +1583,7 @@ module GObject
     
     def signal_connect_data s,&b
       signal = self.class.get_signal s
-    
+    GirFFI::CB << b
       if signal
         cb = signal.make_closure(&b)
       else
