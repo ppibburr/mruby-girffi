@@ -117,7 +117,7 @@ module GirFFI
           return nil if ptr.is_null?        
         
           iface = get_struct
-          q = ::Object.const_get(iface.namespace).const_get(iface.name)
+          q = ::Object.const_get(iface.safe_namespace).const_get(iface.name)
           return q.wrap(ptr)
           
         elsif tag == :array
@@ -573,7 +573,7 @@ module GirFFI
             end
           
             if t=a.argument_type.flattened_tag == :object
-              cls = ::Object.const_get(ns=a.argument_type.interface.namespace.to_sym).const_get(n=a.argument_type.interface.name.to_sym)
+              cls = ::Object.const_get(ns=a.argument_type.interface.safe_namespace.to_sym).const_get(n=a.argument_type.interface.name.to_sym)
 
               next cls::StructClass
             end
@@ -582,7 +582,7 @@ module GirFFI
             if (e=a.argument_type.flattened_tag) == :enum
               key = a.argument_type.interface.name
               
-              ::Object.const_get(a.argument_type.interface.namespace.to_sym).const_get(key)
+              ::Object.const_get(a.argument_type.interface.safe_namespace.to_sym).const_get(key)
 
               next key.to_sym
             end
@@ -601,7 +601,7 @@ module GirFFI
           params << :pointer if respond_to?(:throws?) and throws?
           
           if t=return_type.flattened_tag == :object
-            cls = ::Object.const_get(ns=return_type.interface.namespace.to_sym).const_get(n=return_type.interface.name.to_sym)
+            cls = ::Object.const_get(ns=return_type.interface.safe_namespace.to_sym).const_get(n=return_type.interface.name.to_sym)
             ret = cls::StructClass
           else    
             ret = get_ffi_type      
@@ -818,7 +818,7 @@ module GirFFI
         # @param info [GObjectIntrospection::IFunctionInfo] to bind
         # @return FIXME
         def bind_instance_method name, m_data
-          ::Object.const_get(data.namespace.to_sym).bind_function m_data
+          ::Object.const_get(data.safe_namespace.to_sym).bind_function m_data
           
           define_method name do |*o,&b|
             m_data.call(self,*o,&b)
@@ -837,7 +837,7 @@ module GirFFI
         # @param info [GObjectIntrospection::IFunctionInfo] to bind
         # @return FIXME
         def self.bind_class_method name, m_data
-          ::Object.const_get(data.namespace.to_sym).bind_function m_data
+          ::Object.const_get(data.safe_namespace.to_sym).bind_function m_data
           
           singleton_class.send :define_method, name do |*o,&b|
             m_data.call(*o,&b)
@@ -1104,7 +1104,7 @@ module GirFFI
         extend GirFFI::Builder::ObjectBuilder::Interface
         
         def self.get_object_class
-          ns = ::Object.const_get(data.namespace.to_sym)
+          ns = ::Object.const_get(data.safe_namespace.to_sym)
           return klass = ns.const_get(:"#{data.name}Class")    
         end
       
@@ -1181,7 +1181,7 @@ module GirFFI
           if pi.property_type.object?
             return nil if pt.get_pointer(0).is_null?
             
-            ns = pi.property_type.get_object.namespace
+            ns = pi.property_type.get_object.safe_namespace
             n  = pi.property_type.get_object.name
             
             cls = ::Object.const_get(ns).const_get(n)
@@ -1260,7 +1260,7 @@ module GirFFI
         # @param c [#to_sym] the name to search for
         # @return [::Object] of the result
         def const_missing c
-          info = REPO.find_by_name("#{self}",c.to_s)
+          info = REPO.find_by_name("#{@loader_ns}",c.to_s)
           
           case info.class.to_s
           when GObjectIntrospection::IObjectInfo.to_s
@@ -1378,7 +1378,7 @@ module GirFFI
           sc = nil
           
           if sci=info.parent
-            sc = ::Object::const_get(sci.namespace.to_sym)::const_get(sci.name.to_sym)
+            sc = ::Object::const_get(sci.safe_namespace.to_sym)::const_get(sci.name.to_sym)
           end
 
           cls = NC::define_class self, c, sc ? sc : GirFFI::Builder::ObjectBuilder::IsGObjectObject
@@ -1392,10 +1392,10 @@ module GirFFI
             next unless iface.is_a?(GObjectIntrospection::IInterfaceInfo)
 
             begin
-              ns = ::Object.const_get(iface.namespace.to_sym)
+              ns = ::Object.const_get(iface.safe_namespace.to_sym)
             rescue
-              GirFFI.setup iface.namespace.to_sym
-              ns = ::Object.const_get(iface.namespace.to_sym)
+              GirFFI.setup iface.safe_namespace.to_sym
+              ns = ::Object.const_get(iface.safe_namespace.to_sym)
             end
 
             mod = ns.const_get(iface.name.to_sym)       
@@ -1464,7 +1464,7 @@ module GirFFI
     
     return nil unless info
     
-    ns = info.namespace
+    ns = info.safe_namespace
     n  = info.name
     
     cls = ::Object.const_get(ns.to_sym).const_get(n.to_sym)
@@ -1538,11 +1538,22 @@ module GirFFI
   def self.setup ns, v = nil
     v = v.to_s if v
     
+    ns_ = ns.to_s
+    if ns.to_s == "cairo" or ns.to_s == "Cairo"
+      ns_ = "Cairo"
+      ns = "cairo" 
+    end
+    
     raise "No Introspection typelib found for #{ns.to_s+(v ? " - #{v}": "")}" if REPO.require(ns.to_s, v).is_null?
     
-    mod = NC::define_module(::Object, ns.to_s.to_sym)
+    mod = NC::define_module(::Object, ns_.to_s.to_sym)
     
     mod.extend GirFFI::Builder::NameSpaceBuilder::IsNameSpace
+    
+    mod.class_eval do
+      @namespace = ns_
+      instance_variable_set("@loader_ns",ns)
+    end
     
     lib = NC::define_module mod, :Lib
     
@@ -1555,7 +1566,7 @@ module GirFFI
       ffi_lib "#{ln}"
     end
     
-    if self.respond_to?(m="#{ns}".to_sym)
+    if self.respond_to?(m="#{ns_}".to_sym)
       send m
     end
     
@@ -1569,7 +1580,8 @@ module GObject
   # Become GirFFI usable
   extend GirFFI::Builder::NameSpaceBuilder::IsNameSpace
   self::Lib.extend GirFFI::Builder::MethodBuilder::FunctionInvoker
-
+  @loader_ns = "GObject"
+  @namespace = "GObject"
   # FIXME: 
   # Force load of GObject::Object 
   # constants of name :Object, must always be force loaded
@@ -1639,7 +1651,12 @@ def GirFFI.Gtk()
   
   unless ::Object.const_defined?(:Gio)
     GirFFI.setup(:Gio)
-  end          
+  end 
+  
+  
+  unless ::Object.const_defined?(:Cairo)
+    GirFFI.setup(:Cairo)
+  end            
 
   version = GirFFI::REPO.get_version("Gtk").split(".").first.to_i
   ::Gtk.const_missing(:Object) if version < 3
@@ -1812,12 +1829,11 @@ def GirFFI.describe h
   (h[:define][:classes] ||= {}).each_pair do |c,cv|
     ns.module_eval do
       cls = NC::define_class ns, c, ::Object
-      p cls
+      
       cls.class_eval do
         # class functions
         (cv[:class_methods] ||= {}).each_pair do |n,mv|
           cls.singleton_class.send :define_method, n do |*o,&b|
-            p ns
             ns.send mv[:symbol],*o,&b
           end
           
