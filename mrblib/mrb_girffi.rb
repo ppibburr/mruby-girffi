@@ -617,9 +617,11 @@ module GirFFI
             i = -1
             take_a = []
           
-            if is_a?(GirFFI::Builder::SignalBuilder::Signal)
+            if is_a?(GObjectIntrospection::ICallbackInfo)
               o.shift
               i=0
+            elsif is_a?(GObjectIntrospection::ISignalInfo)
+              o.shift
             end
           
             # Get the Ruby value's
@@ -941,14 +943,16 @@ module GirFFI
           sc = NC::define_class self, :StructClass, FFI::Struct
           sc.extend GirFFI::Builder::ObjectBuilder::StructClass
           
-          q=data.fields.map do |f|
-            type = f.field_type.tag
+          q=[]
+          (b=data.fields).size.times do |i|
+            f = b[i]
+            type = f.field_type.get_ffi_type
             
-            if type == :interface and f.field_type.interface.is_a?(GObjectIntrospection::IFlagsInfo)
+            if f.field_type.interface.is_a?(GObjectIntrospection::IFlagsInfo)
               type = :uint32
             end
 
-            [f.name.to_sym, type == :void ? :pointer : type]
+            q << [:"#{f.name}", type == :void ? :pointer : type]
           end
           q = q.flatten
           
