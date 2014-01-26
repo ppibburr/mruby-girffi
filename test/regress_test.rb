@@ -89,6 +89,7 @@ assert("Regress.test_array_callback()") do
   bool_a = []
   
   q=Regress::test_array_callback do |a,b,*o|
+    p [a,b,o]
     bool = (a.length == 4) and (a == [-1, 0 ,1, 2]) and (b.length == 3) and ( b == ["one","two","three"])
     bool_a << bool
     

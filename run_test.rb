@@ -5,7 +5,7 @@ if ARGV.delete("--rb")
   RB_PATH = ENV["RB_PATH"] || "ruby"
 else
   MRB = true
-  RB_PATH = ENV["RB_PATH"] || "../mruby/bin/mruby"  
+  RB_PATH = ENV["RB_PATH"] || "mruby"  
 end
 
 
@@ -22,12 +22,7 @@ def test
 
   File.open('./tmp/blob.rb',"w") do |f|
     unless MRB
-      f.puts "require 'rubygems'"
-      f.puts "require 'ffi'"
-      f.puts "\n"
-      f.puts File.read("../mruby-gobject-introspection/mrblib/gir.rb")
-      f.puts "\n"
-      f.puts File.read("./mrblib/mrb_girffi.rb")
+      f.puts "require File.join(File.dirname(__FILE__),'../tools/mri/loader.rb')"
       f.puts "\n"
     end
   
@@ -37,7 +32,12 @@ def test
     f.puts File.read("./test/regress_test.rb")
   end
   
-  system "LD_LIBRARY_PATH=./tmp/lib:$LD_LIBRARY_PATH #{RB_PATH} ./tmp/blob.rb"
+  ARGV.delete("test")
+  ARGV.delete("clean")
+  
+  args = ARGV.empty? ? "" : ARGV.join(" ")
+  
+  system "LD_LIBRARY_PATH=./tmp/lib:$LD_LIBRARY_PATH #{RB_PATH} ./tmp/blob.rb#{args}"
 end
 
 def clean

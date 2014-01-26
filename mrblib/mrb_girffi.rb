@@ -121,12 +121,14 @@ module GirFFI
           return q.wrap(ptr)
           
         elsif tag == :array
+          p :QQ
           if (len_i=array_length) > 0
             type = GObjectIntrospection::ITypeInfo::TYPE_MAP[element_type]
           
             len_info = info_a[len_i].argument_type
           
             len_info.extend GirFFI::Builder::Value
+            p rv_a, len_i
             len = len_info.get_ruby_value(rv_a[len_i])
                               
             ary = ptr.send("read_array_of_#{type}", len)
@@ -620,12 +622,15 @@ module GirFFI
           cb=FFI::Closure.new(at,ret) do |*o|
             i = -1
             take_a = []
+            oo = o[0]
+            args_ = args()          
           
-            if is_a?(GObjectIntrospection::ICallbackInfo)
+            
+            if is_a?(GObjectIntrospection::ISignalInfo)
               o.shift
-              i=0
-            elsif is_a?(GObjectIntrospection::ISignalInfo)
-              o.shift
+              if is_a?(GObjectIntrospection::ICallbackInfo)
+                i = 0
+              end
             end
           
             # Get the Ruby value's
@@ -638,10 +643,10 @@ module GirFFI
               info = arg(i).argument_type
               info.extend GirFFI::Builder::Value
 
-              val, take = info.get_ruby_value(q,i,o,args())
+              val, take = info.get_ruby_value(q,i,o,args_)
 
               take_a << take if take
-              
+              p take_a, :TAKE
               next val
             end
              
