@@ -623,7 +623,7 @@ module GirFFI
             args_ = args()          
           
             
-            if is_a?(GObjectIntrospection::ISignalInfo)
+            if is_a?(GirFFI::Builder::SignalBuilder::Signal)
               o.shift
               if is_a?(GObjectIntrospection::ICallbackInfo)
                 i = 0
