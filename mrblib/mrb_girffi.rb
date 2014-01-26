@@ -121,14 +121,13 @@ module GirFFI
           return q.wrap(ptr)
           
         elsif tag == :array
-          p :QQ
           if (len_i=array_length) > 0
             type = GObjectIntrospection::ITypeInfo::TYPE_MAP[element_type]
           
             len_info = info_a[len_i].argument_type
           
             len_info.extend GirFFI::Builder::Value
-            p rv_a, len_i
+        
             len = len_info.get_ruby_value(rv_a[len_i])
                               
             ary = ptr.send("read_array_of_#{type}", len)
@@ -171,11 +170,9 @@ module GirFFI
         elsif (type = get_ffi_type) != :pointer
           if i and info_a
             if info_a[i].direction == :out
-              ## Had this here ...
-              ## It broke CRuby ...
-              ## and mruby still works
-              #
-              # ptr = ptr.get_pointer(0)
+               if MRUBY
+                 ptr = ptr.get_pointer(0)
+               end
             end
           end
           
@@ -609,7 +606,7 @@ module GirFFI
             ret = get_ffi_type      
           end
 
-          return @signature = params,ret
+          return @signature = [params,ret]
         end
         
         def full_signature
@@ -646,7 +643,7 @@ module GirFFI
               val, take = info.get_ruby_value(q,i,o,args_)
 
               take_a << take if take
-              p take_a, :TAKE
+
               next val
             end
              
@@ -680,6 +677,7 @@ module GirFFI
         # @return The result of calling the function
         def call *o,&b
           args,ret = (@signature ||= get_signature())
+
           @obj ||= container ? (@ns||=::Object.const_get(namespace)).const_get(container.name) : nil
           o, inouts, outs, return_values, error = ruby_style_arguments(*o,&b)
 
