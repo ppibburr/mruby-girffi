@@ -619,14 +619,16 @@ module GirFFI
           cb=FFI::Closure.new(at,ret) do |*o|
             i = -1
             take_a = []
-            oo = o[0]
+          
             args_ = args()          
           
-            
+            # Signals will not yield 'this'
             if is_a?(GirFFI::Builder::SignalBuilder::Signal)
-              o.shift
+              o.shift # remove 'this'
+              
+              # if using the GObjectIntrospection::ICallbackInfo of the signal
               if is_a?(GObjectIntrospection::ICallbackInfo)
-                i = 0
+                i = 0 # increment the argument position
               end
             end
           
@@ -947,7 +949,8 @@ module GirFFI
         #
         # @return [FFI::Struct] the struct
         def self.define_struct_class
-          sc = NC::define_class self, :StructClass, FFI::Struct
+          sc = Class.new(FFI::Struct)
+          const_set :StructClass, sc
           sc.extend GirFFI::Builder::ObjectBuilder::StructClass
           
           q=[]
@@ -965,6 +968,11 @@ module GirFFI
           
           sc.layout *q
           sc.set_object_class self
+          
+          # CONSIDERATION: struct members as methods 
+          # sc.members.each do |m|
+          #   # ...
+          # end
           
           return sc 
         end
@@ -1303,7 +1311,8 @@ module GirFFI
         # @param info [GObjectIntrospection::IEnumInfo] the enum to bind
         # @return [Class] representing the enum
         def bind_enum n,info
-          cls = NC::define_class self,info.name,::Object
+          cls = Class.new(::Object)
+          const_set info.name, cls
           values = []
           
           cls.class_eval do
@@ -1330,7 +1339,8 @@ module GirFFI
         # @param info [GObjectIntrospection::IInterfaceInfo] to wrap
         # @return [Module] wrapping +info+
         def bind_interface c, info
-          mod = NC::define_module self, c
+          mod = Module.new
+          const_set c,mod
           mod.send :extend, GirFFI::Builder::ObjectBuilder::Interface
           mod.instance_variable_set("@data",info)
             
@@ -1343,7 +1353,8 @@ module GirFFI
         # @param info [GObjectIntrospection::IStructInfo] to wrap
         # @return [GirFFI::Builder::ObjectBuilder::IsStruct] wrapping +info+        
         def bind_struct c, info
-          cls = NC::define_class self, c, GirFFI::Builder::ObjectBuilder::IsStruct
+          cls = Class.new(GirFFI::Builder::ObjectBuilder::IsStruct)
+          const_set c,cls
           cls.instance_variable_set("@data",info)
           
           cls.define_struct_class
@@ -1357,7 +1368,8 @@ module GirFFI
         # @param info [GObjectIntrospection::IStructInfo] to wrap
         # @return [GirFFI::Builder::ObjectBuilder::IsGObjectObjectClass] wrapping +info+ 
         def bind_object_class c,info
-          cls = NC::define_class self, c, GirFFI::Builder::ObjectBuilder::IsGObjectObjectClass
+          cls = Class.new(GirFFI::Builder::ObjectBuilder::IsGObjectObjectClass)
+          const_set(c,cls)
           cls.instance_variable_set("@data",info)
           
           cls.define_struct_class
@@ -1384,7 +1396,8 @@ module GirFFI
             sc = ::Object::const_get(sci.safe_namespace.to_sym)::const_get(sci.name.to_sym)
           end
 
-          cls = NC::define_class self, c, sc ? sc : GirFFI::Builder::ObjectBuilder::IsGObjectObject
+          cls = Class.new(sc ? sc : GirFFI::Builder::ObjectBuilder::IsGObjectObject)
+          const_set c,cls
           cls.send :include, GirFFI::Builder::ObjectBuilder::Interface::Implemented
 
           cls.instance_variable_set("@data",info)
@@ -1549,16 +1562,23 @@ module GirFFI
     
     raise "No Introspection typelib found for #{ns.to_s+(v ? " - #{v}": "")}" if REPO.require(ns.to_s, v).is_null?
     
-    mod = NC::define_module(::Object, ns_.to_s.to_sym)
+    mod = Module.new
+    
+    ::Object.class_eval do
+      const_set(ns_.to_s.to_sym,mod)
+    end
     
     mod.extend GirFFI::Builder::NameSpaceBuilder::IsNameSpace
     
     mod.class_eval do
-      @namespace = ns_
+      instance_variable_set "@namespace", ns_
       instance_variable_set("@loader_ns",ns)
     end
     
-    lib = NC::define_module mod, :Lib
+    lib = Module.new()
+    mod.class_eval do
+      const_set :Lib,lib
+    end
     
     lib.class_eval do
       extend FFI::Library
@@ -1572,7 +1592,7 @@ module GirFFI
     if self.respond_to?(m="#{ns_}".to_sym)
       send m
     end
-    
+   
     return mod
   end
 
@@ -1674,7 +1694,8 @@ def GirFFI.GLib()
     
   GLib.module_eval do
     # Setup GLib::Error
-    NC::define_class self,:Error,GObjectIntrospection::GError
+    cls = Class.new(GObjectIntrospection::GError)
+    const_set(:Error,cls)
   
     self::const_missing :Dir
     self::Dir.class_eval do
@@ -1796,18 +1817,6 @@ def GirFFI.WebKit()
   end
 end
 
-# If no mrbgem to provide Hash#each_pair
-# we implement it
-unless Hash.instance_methods.index(:each_pair)
-  class Hash
-    def each_pair &b
-      keys.each do |k|
-        b.call k,self[k]
-      end
-    end
-  end
-end
-
 # Allows implentations through description via Hash
 # Useful for: missing and/or wrong introspection data
 #             making things more ruby-like
@@ -1831,7 +1840,8 @@ def GirFFI.describe h
 
   (h[:define][:classes] ||= {}).each_pair do |c,cv|
     ns.module_eval do
-      cls = NC::define_class ns, c, ::Object
+      cls = Class.new(::Object)
+      const_set c,cls
       
       cls.class_eval do
         # class functions
@@ -1856,10 +1866,6 @@ def GirFFI.describe h
   end
 end
 
-module Boolean; end
-class TrueClass; include Boolean; end
-class FalseClass; include Boolean; end
-
 class ::Class
   def girffi_gtype
     type = GirFFI::R2GTypeMap[self]
@@ -1867,27 +1873,15 @@ class ::Class
   end
 end
 
-module FFI
-  class Pointer
-    def ffi_value
-      self
-    end
-  end
-  
-  class Struct
-    def ffi_value
-      self.pointer
-    end
-  end
-  
-  class Union
-    def ffi_value
-      self.pointer
-    end  
-  end
-end
-
 module GirFFI
+  module StringPtr
+    def self.create str=""
+      q=FFI::MemoryPointer.new :string,str.length
+      q.write_string str
+      q    
+    end
+  end
+
   R2GTypeMap = {}
   R2FFITypeMap = {
     String => :"gchararray",
@@ -1927,6 +1921,8 @@ module GirFFI
       return v.pointer
     elsif v.is_a?(FFI::Pointer)
       return v
+    elsif v.is_a?(String)
+      return GirFFI::StringPtr.create(v)
     end
     
     raise "Cannot coerce instance of #{v.class} to FFI::Pointer"
