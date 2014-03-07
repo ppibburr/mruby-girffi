@@ -1161,7 +1161,7 @@ module GirFFI
           ft = pi.property_type.get_ffi_type
 
           pt.send("write_#{ft}",v)
-          
+
           set(n,pt)
         end
         
@@ -1173,6 +1173,11 @@ module GirFFI
           find_property(n)
         end
       
+
+        def get_property_type n
+          pi = self.class.find_property(n)
+          ft = pi.property_type.get_ffi_type 
+        end
         
         def get_property n
           pi = self.class.find_property(n)
@@ -1180,14 +1185,14 @@ module GirFFI
           
           mrb = false
         
-          if FFI::Pointer.instance_methods.index(:addr)
+          if MRUBY
             pt=FFI::MemoryPointer.new(:pointer)
             mrb = true
           else
-            pt=FFI::MemoryPointer.new(ft)
+            pt=FFI::MemoryPointer.new(:pointer)
           end        
 
-          get(n, pt)
+          get n,pt
           
           if pi.property_type.object?
             return nil if pt.get_pointer(0).is_null?
@@ -1200,14 +1205,26 @@ module GirFFI
             return GirFFI::upcast_object(pt.get_pointer(0),cls)
           end
           
-          if mrb
-            return nil if pt.get_pointer(0).is_null?
-          end
+          return nil if pt.get_pointer(0).is_null?
+
           
           if !mrb
-            return pt.send("get_#{ft}",0)
+            if ft == :bool
+              return pt.send("get_int8",0) == 1
+            elsif ft == :string
+              return pt.get_pointer(0).read_string
+            else
+              return pt.send("get_#{ft}",0)
+            end
           else
-            return pt.get_pointer(0).send("read_#{ft}")
+            pt = pt.get_pointer(0)
+            if MRUBY
+              unless pt.is_a?(FFI::Pointer)
+                pt = FFI::Pointer.refer pt.addr
+              end
+            end
+
+            return pt.send("read_#{ft}")
           end
         end
       
@@ -1612,18 +1629,22 @@ module GObject
   const_missing(:Binding)
   
   
-  GObject::Lib.attach_function :g_object_set, [:pointer,:string,:pointer,:pointer], :void
+  GObject::Lib.attach_function :g_object_set, [:pointer,:string,:varargs], :void
   GObject::Lib.attach_function :g_object_get, [:pointer,:string,:pointer,:pointer], :void
 
   GObject::Lib.attach_function :g_signal_connect_data, [:pointer,:string,:pointer,:pointer,:pointer,:pointer], :ulong
   
   class GObject::Object
     def get s,pt
-      GObject::Lib.g_object_get self.to_ptr,"#{s}",pt,nil.to_ptr
+      GObject::Lib.g_object_get self.to_ptr,"#{s}", pt,nil.to_ptr
     end
  
     def set s,pt
-      GObject::Lib.g_object_set self.to_ptr,"#{s}",pt,nil.to_ptr
+      if MRUBY
+        GObject::Lib.g_object_set self.to_ptr, s, pt, nil.to_ptr
+      else
+        GObject::Lib.g_object_set self.to_ptr,s,get_property_type(s), pt.send(:"read_#{get_property_type(s)}"), :pointer,nil.to_ptr
+      end
     end      
     
     def signal_connect_data s,&b
