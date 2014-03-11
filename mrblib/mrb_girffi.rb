@@ -497,6 +497,15 @@ module GirFFI
             
             #block = FFI::MemoryPointer.new(:, ptrs.length)
             #block.write_array_of_pointer ptrs            
+            if type == :string
+              type = :pointer 
+              q = q.map do |s|
+                next s.to_ptr if s == nil
+              
+                pt=FFI::MemoryPointer.new(:string, s.length)
+                pt.write_string s
+              end
+            end
             
             block = FFI::MemoryPointer.new(type, q.length)
             block.send "write_array_of_#{type}", q
@@ -1628,8 +1637,12 @@ module GObject
   const_missing :Object
   const_missing(:Binding)
   
+  unless MRUBY
+    GObject::Lib.attach_function :g_object_set, [:pointer,:string,:varargs], :void
+  else
+    GObject::Lib.attach_function :g_object_set, [:pointer,:string,:pointer,:pointer], :void  
+  end
   
-  GObject::Lib.attach_function :g_object_set, [:pointer,:string,:varargs], :void
   GObject::Lib.attach_function :g_object_get, [:pointer,:string,:pointer,:pointer], :void
 
   GObject::Lib.attach_function :g_signal_connect_data, [:pointer,:string,:pointer,:pointer,:pointer,:pointer], :ulong
@@ -1751,16 +1764,19 @@ def GirFFI.GLib()
       buff = FFI::MemoryPointer.new(:pointer)
       
       # alloc the error
-      error  = FFI::MemoryPointer.new(:pointer)
+      error  = FFI::MemoryPointer.new(:pointer,GLib::Error::Struct.size)
       # ensure NULL
       error.write_pointer(FFI::Pointer::NULL) if error
 
       err = error.to_out(true)
       
       ret = self::Lib.g_file_get_contents path, buff, nil.to_ptr, err
-     
-      # Something went wrong
-      raise GLib::Error.new(error).message unless error.is_null?
+      
+      unless MRUBY
+        raise GLib::Error.new(error.get_pointer(0)).message unless error.get_pointer(0).is_null?
+      else
+        raise GLib::Error.new(error).message unless error.is_null?
+      end
       
       # A string of the file contents
       return buff.get_pointer(0).read_string
@@ -1777,8 +1793,11 @@ def GirFFI.GLib()
       
       ret = self::Lib.g_file_set_contents path, buff, buff.length, err
 
-      # Something went wrong
-      raise GLib::Error.new(error).message unless ret
+      unless MRUBY
+        raise GLib::Error.new(error.get_pointer(0)).message unless ret
+      else
+        raise GLib::Error.new(error).message unless ret
+      end
       
       return ret
     end
